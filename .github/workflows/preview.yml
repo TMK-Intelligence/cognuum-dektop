@@ -1,0 +1,79 @@
+name: Unsigned desktop preview
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Preview version (for example 0.1.0-preview.1)
+        required: true
+        default: 0.1.0-preview.1
+permissions:
+  contents: read
+concurrency:
+  group: desktop-preview
+  cancel-in-progress: false
+jobs:
+  package:
+    if: github.ref == 'refs/heads/main'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            target: universal-apple-darwin
+            bundles: app,dmg
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            bundles: nsis
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - if: runner.os == 'macOS'
+        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+      - name: Prepare unsigned preview configuration
+        env:
+          PREVIEW_VERSION: ${{ inputs.version }}
+        run: node scripts/preview-assets.mjs prepare
+      - name: Build preview installers for production
+        run: npm run build -- --target ${{ matrix.target }} --bundles ${{ matrix.bundles }} --config preview-config.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: preview-${{ matrix.target }}
+          if-no-files-found: error
+          path: |
+            src-tauri/target/**/release/bundle/dmg/*.dmg
+            src-tauri/target/**/release/bundle/nsis/*.exe
+  draft:
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: preview-*
+          path: preview-artifacts
+      - name: Validate complete installers and compute checksums
+        env:
+          PREVIEW_VERSION: ${{ inputs.version }}
+        run: node scripts/preview-assets.mjs assemble
+      - name: Create unsigned preview draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          tag=$(cat preview-artifacts/tag.txt)
+          gh release create "$tag" preview-artifacts/upload/* --target "$GITHUB_SHA" --draft --prerelease --title "Cognuum $tag — unsigned preview" --notes-file preview-artifacts/notes.md

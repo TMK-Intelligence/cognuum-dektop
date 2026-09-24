@@ -9,3 +9,5 @@ src-tauri/gen/
 .DS_Store
 release-config.json
 release-artifacts/
+preview-config.json
+preview-artifacts/

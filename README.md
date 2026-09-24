@@ -165,3 +165,13 @@ are not available yet. Customer installers must wait for these credentials.
 
 Account enrollment, contracts and purchases are owner actions. Do not publish
 unsigned builds as production installers while waiting for approval.
+# Unsigned preview installers
+
+Until signing enrollment is complete, `Unsigned desktop preview` can build a
+production-connected Mac universal DMG and Windows x64 installer from `main`.
+Use an explicit version such as `0.1.0-preview.1`. The workflow creates a
+**draft prerelease** with checksums and a prominent unsigned notice. Review both
+assets before publishing; never mark this preview as the latest stable release.
+These builds have no verified publisher signature or automatic updates, and
+operating systems may block them. The signed release workflow remains separate
+and still requires all signing credentials.
