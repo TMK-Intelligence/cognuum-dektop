@@ -1,0 +1,28 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Cognuum",
+  "version": "0.1.0",
+  "identifier": "com.cognuum.desktop",
+  "build": { "frontendDist": "../fallback" },
+  "app": {
+    "withGlobalTauri": false,
+    "windows": [],
+    "security": {
+      "capabilities": [],
+      "csp": "default-src 'self'; style-src 'self'; img-src 'self'; base-uri 'none'; object-src 'none'; frame-src 'none'; connect-src 'none'; script-src 'none'"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["app", "dmg", "nsis"],
+    "category": "Finance",
+    "shortDescription": "Your private intelligence system",
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"],
+    "macOS": { "minimumSystemVersion": "13.0", "hardenedRuntime": true },
+    "windows": { "webviewInstallMode": { "type": "downloadBootstrapper", "silent": true }, "nsis": { "installMode": "currentUser" } }
+  },
+  "plugins": {
+    "desktop": { "origin": "https://access.cognuum.com", "channel": "production", "scheme": "cognuum" },
+    "deep-link": { "desktop": { "schemes": ["cognuum"] } }
+  }
+}

@@ -1,0 +1,132 @@
+name: Signed desktop release
+on:
+  workflow_dispatch:
+    inputs:
+      channel:
+        type: choice
+        options: [production, staging]
+        default: staging
+        required: true
+permissions:
+  contents: read
+concurrency:
+  group: desktop-release-${{ inputs.channel }}
+  cancel-in-progress: false
+jobs:
+  package:
+    if: github.ref == 'refs/heads/main'
+    environment: desktop-${{ inputs.channel }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            target: universal-apple-darwin
+            bundles: app,dmg
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            bundles: nsis
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: cargo test --locked --manifest-path src-tauri/Cargo.toml
+      - if: runner.os == 'macOS'
+        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+      # The Windows runner must have the chosen organization's signing client.
+      # This is deliberately an environment-controlled command, never a PR input.
+      - name: Install Windows signing tool
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          SETUP_COMMAND: ${{ vars.WINDOWS_SIGN_SETUP }}
+        run: |
+          if (!$env:SETUP_COMMAND) { throw 'Configure WINDOWS_SIGN_SETUP for the selected signing provider.' }
+          Invoke-Expression $env:SETUP_COMMAND
+      - name: Prepare and build signed packages
+        shell: bash
+        env:
+          CHANNEL: ${{ inputs.channel }}
+          TARGET: ${{ matrix.target }}
+          BUNDLES: ${{ matrix.bundles }}
+          TAURI_UPDATER_PUBLIC_KEY: ${{ vars.TAURI_UPDATER_PUBLIC_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ vars.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+          WINDOWS_SIGN_COMMAND: ${{ vars.WINDOWS_SIGN_COMMAND }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+        run: |
+          node scripts/prepare-release.mjs "$CHANNEL"
+          configs=(--config release-config.json)
+          if [ "$CHANNEL" = staging ]; then configs+=(--config src-tauri/tauri.staging.conf.json); fi
+          npm run build -- --target "$TARGET" --bundles "$BUNDLES" "${configs[@]}"
+      - name: Verify Apple signature and notarization
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          for app in src-tauri/target/universal-apple-darwin/release/bundle/macos/*.app; do
+            codesign --verify --deep --strict "$app"
+            xcrun stapler validate "$app"
+          done
+      - name: Verify Windows installer signature
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $files = Get-ChildItem src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
+          if ($files.Count -ne 1) { throw 'Expected one installer' }
+          foreach ($file in $files) {
+            if ((Get-AuthenticodeSignature $file.FullName).Status -ne 'Valid') { throw 'Invalid installer signature' }
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: signed-${{ inputs.channel }}-${{ matrix.target }}
+          if-no-files-found: error
+          path: |
+            src-tauri/target/**/release/bundle/dmg/*.dmg
+            src-tauri/target/**/release/bundle/macos/*.app.tar.gz*
+            src-tauri/target/**/release/bundle/nsis/*.exe*
+  draft:
+    needs: package
+    runs-on: ubuntu-latest
+    environment: desktop-${{ inputs.channel }}
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: signed-${{ inputs.channel }}-*
+          path: release-artifacts
+      - name: Assemble verified release metadata
+        env:
+          CHANNEL: ${{ inputs.channel }}
+        run: node scripts/release-assets.mjs
+      - name: Create reviewable draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          tag=$(cat release-artifacts/tag.txt)
+          args=()
+          if [ '${{ inputs.channel }}' = staging ]; then args+=(--prerelease); fi
+          gh release create "$tag" release-artifacts/upload/* --target "$GITHUB_SHA" --draft "${args[@]}" --title "Cognuum $tag" --notes-file release-artifacts/notes.md

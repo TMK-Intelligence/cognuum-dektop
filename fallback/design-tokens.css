@@ -1,0 +1,978 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   COGNUUM DESIGN SYSTEM - SINGLE SOURCE OF TRUTH
+   
+   All colors are defined here. No other file should define colors.
+   Use HSL format for flexibility with opacity modifiers.
+   
+   Usage in components:
+   - Tailwind: bg-background, text-primary, border-border, etc.
+   - CSS: hsl(var(--brand-cyan))
+   - With opacity: hsl(var(--brand-cyan) / 0.5)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  /* ═══════════════════════════════════════════
+     BRAND COLORS
+     ═══════════════════════════════════════════ */
+  
+  /* Primary action color - Cyan
+     Canonical brand-cyan per CLAUDE_STANDARDS.md → "Canonical brand colors". */
+  --brand-cyan: 192 98.393574% 51.176471%; /* #08CCFD */
+  --brand-cyan-light: 188 96% 61%;      /* Explicit lighter variant */
+  --brand-cyan-dark: 188 96% 41%;       /* Explicit darker variant */
+
+  /* Accent - Gold */
+  --brand-gold: 39.9 80% 50.980392%; /* #E6A31E */
+  --brand-gold-light: 40 85% 60%;
+  --brand-gold-dark: 40 80% 40%;
+
+  /* Secondary Accent - Pink */
+  --brand-pink: 329.863014 85.882353% 50%; /* #ED1280 */
+  --brand-pink-light: 330 86% 70%;
+  --brand-pink-dark: 330 86% 50%;
+  --tertiary: var(--brand-pink);
+
+  /* Quaternary Accent - Violet (Atlas) */
+  --brand-violet: 260.270588 100% 70.980392%; /* #9D6BFF */
+  --brand-violet-light: 257.4 100% 80.39%; /* #B89BFF */
+  --brand-violet-dark: 260 50.6% 50%; /* #6A3FC0 */
+
+  /* Editorial / methodology — Cream */
+  --brand-cream: 40 44% 88%;            /* #EEE5D3 */
+
+  /* Cream's legible-on-background counterpart. Cream at 88% L is a surface
+     tint — as a data mark (graph nodes, dots) it needs a theme-aware value:
+     cream itself in dark mode, a deep warm tan in light mode (see html.light).
+     Use this token whenever cream identifies a DATA MARK on the page
+     background rather than tinting a surface. */
+  --brand-cream-ink: var(--brand-cream);
+
+  /* Surface tint — primary at 8% opacity for hover/active surfaces */
+  --brand-primary-subtle: color-mix(in oklch, hsl(var(--brand-cyan)) 8%, transparent);
+
+  /* Theme-invariant dark slate. Used for text/borders that sit on top of
+     a fully-saturated brand pill (cyan / gold / pink at 100% opacity),
+     where the surface is bright in BOTH themes — so the foreground must
+     stay dark regardless of theme. Defined only here; not overridden in
+     `html.light`. */
+  --on-brand-pill: 220 49% 8%;          /* #0b1220 — dark slate */
+
+  /* ═══════════════════════════════════════════
+     BACKGROUND SCALE (True blacks, minimal blue tint)
+     From deepest to lightest
+     ═══════════════════════════════════════════ */
+  
+  /* Neutral near-black ladder (2026-09-19). Base honours Remi's #06090e; the
+     saturation is held LOW and tapers so NOTHING reads blue — hue-215 @ 38% sat
+     looked black at the page but turned visibly blue on the lighter chrome
+     (nav/menu/cards at L7-8%). Mirrored in src/index.css :root and
+     defaultDarkTokens (useThemeEditor.ts); the ACTIVE dark palette is the DB
+     row app_theme_config.dark_tokens — patch that to change what users see. */
+  --bg-base: 218 40% 4%;                /* #06090e - Deepest background (page) */
+  --bg-deep: 216 22% 5%;                /* Slightly elevated */
+  --bg-elevated: 216 16% 5%;            /* Popover / menu / nav */
+  --bg-surface: 216 16% 6%;             /* Interactive surfaces */
+  --bg-card: 215 15% 7%;                /* Card backgrounds */
+  --bg-hover: 214 12% 11%;              /* Hover states */
+  --bg-active: 214 11% 15%;             /* Active/pressed states */
+
+  /* ═══════════════════════════════════════════
+     BORDER SCALE
+     ═══════════════════════════════════════════ */
+  
+  --border-subtle: 214 12% 13%;         /* Hairline (neutral) */
+  --border-default: 214 10% 16%;        /* Default (neutral) */
+  --border-strong: 214 9% 20%;          /* Emphasized (neutral) */
+  --border-accent: 186 100% 40%;        /* Accent borders (cyan) */
+
+  /* ═══════════════════════════════════════════
+     TEXT SCALE — the ink ladder
+
+     FOUR ACTIVE TIERS plus one exempt one. Each active tier is defined by
+     its CONTRAST RATIO against the worst default surface it lands on
+     (--bg-base and --bg-card), not by a colour someone liked, and holds the
+     same ratio in light mode so a tier means the same thing in both themes:
+
+       tier              floor    dark    light
+       --text-primary    ≥ 12     16.82   17.94
+       --text-secondary  ≥ 7.4     7.74    7.73
+       --text-muted      ≥ 5.6     5.86    5.94
+       --text-quiet      ≥ 4.5     4.80    4.76   ← WCAG AA, normal text
+       --text-disabled     n/a     2.40    1.95   ← EXEMPT, see below
+
+     --text-disabled is deliberately NOT on the ladder. WCAG 2.1 SC 1.4.3
+     exempts "text ... that is part of an inactive user interface component",
+     so disabled ink has no contrast requirement — and giving it one would
+     stop disabled controls from looking disabled. It may only ever style
+     inactive UI. It must never be aliased as an ACTIVE text tier, which is
+     precisely the bug --text-quiet exists to close: the charting cytadel
+     skin's fourth active role (--ch-text-whisper) had nothing else to point
+     at and borrowed --text-disabled, landing live eyebrow and KPI-context
+     labels at 2.40:1 in dark and 1.95:1 in light.
+
+     --text-secondary moved too (dark 6.86 → 7.74, light 5.75 → 7.73). It
+     already cleared AA; it is raised to open the headroom the two tiers
+     beneath it need. Without it the only way to get muted and quiet over
+     4.5:1 is to squash all three tiers into the 4.5–5.8 band — a technical
+     pass that destroys the hierarchy the tiers exist to express.
+
+     Mirrored in src/index.css, src/matrix/matrix.css (which pins the DARK
+     set for /matrix under html.light) and the editor defaults in
+     src/hooks/useThemeEditor.ts. Pinned by src/tests/textContrast.test.ts.
+     See docs/transition/2026-07-25-wcag-contrast-remediation.md.
+     ═══════════════════════════════════════════ */
+
+  --text-primary: 210 40% 98%;          /* #F8FAFC - Primary text */
+  --text-secondary: 215 20% 69%;        /* #a0adc0 - Secondary text */
+  --text-muted: 215 16% 60%;            /* #8996a9 - Muted text */
+  --text-quiet: 215 16% 54%;            /* #77879c - Quietest ACTIVE text */
+  --text-disabled: 215 16% 35%;         /* Disabled text — WCAG-exempt, inactive UI only */
+
+  /* ═══════════════════════════════════════════
+     SEMANTIC COLORS
+     ═══════════════════════════════════════════ */
+  
+  /* Success - Green */
+  --success: 142 71% 45%;               /* #22C55E */
+  --success-light: 142 71% 55%;
+  --success-dark: 142 71% 35%;
+  
+  /* Warning - Amber/Gold */
+  --warning: 45 93% 47%;                /* #F59E0B */
+  --warning-light: 45 93% 58%;
+  --warning-dark: 45 93% 37%;
+  
+  /* Error/Destructive - Red */
+  --error: 0 84% 60%;                   /* #EF4444 */
+  --error-light: 0 84% 70%;
+  --error-dark: 0 84% 50%;
+  
+  /* Info - Cyan (same as brand) */
+  --info: 186 100% 50%;
+  --info-light: 186 100% 60%;
+  --info-dark: 186 100% 40%;
+
+  /* Job / task status (Tasks drawer, queue pills). Aliases of the semantic
+     colours above so they follow every theme automatically; consume as
+     hsl(var(--status-*)) and never as a literal. */
+  --status-queued: var(--warning);
+  --status-running: var(--info);
+  --status-success: var(--success);
+  --status-failed: var(--error);
+
+  /* ═══════════════════════════════════════════
+     SHADCN/UI SEMANTIC TOKENS
+     These map to the shadcn component system
+     ═══════════════════════════════════════════ */
+  
+  --background: var(--bg-base);
+  --foreground: var(--text-primary);
+  
+  --card: var(--bg-card);
+  --card-foreground: var(--text-primary);
+  
+  --popover: var(--bg-elevated);
+  --popover-foreground: var(--text-primary);
+  
+  --primary: var(--brand-cyan);
+  --primary-foreground: var(--bg-base);
+  
+  --secondary: var(--bg-surface);
+  --secondary-foreground: var(--text-primary);
+  
+  --muted: var(--bg-hover);
+  --muted-foreground: var(--text-muted);
+  
+  --accent: var(--brand-gold);
+  --accent-foreground: var(--bg-base);
+
+  /* Tertiary (pink) foreground. Dark mode brand-pink sits at high lightness,
+     so a near-black foreground reads cleanest — mirrors the gold/--accent pair.
+     Light-mode override below. */
+  --tertiary-foreground: var(--bg-base);
+
+  --destructive: var(--error);
+  --destructive-foreground: var(--text-primary);
+  
+  --border: var(--border-default);
+  --input: var(--border-default);
+  --ring: var(--brand-cyan);
+
+  /* ═══════════════════════════════════════════
+     CHART COLORS
+     Consistent palette for data visualization
+     ═══════════════════════════════════════════ */
+  
+  --chart-1: var(--brand-cyan);
+  --chart-2: var(--brand-pink);
+  --chart-3: var(--brand-gold);
+  --chart-4: 142 71% 45%;               /* Green */
+  --chart-5: 262 83% 58%;               /* Purple */
+  --chart-6: 24 95% 53%;                /* Orange */
+  --chart-7: 199 89% 48%;               /* Sky blue */
+  --chart-8: 47 96% 53%;                /* Yellow */
+
+  /* ═══════════════════════════════════════════
+     GRADIENTS
+     ═══════════════════════════════════════════ */
+  
+  --gradient-brand: linear-gradient(135deg, hsl(var(--brand-cyan)), hsl(var(--brand-pink)));
+  --gradient-gold: linear-gradient(135deg, hsl(var(--brand-gold)), hsl(var(--brand-pink)));
+  --gradient-surface: linear-gradient(180deg, hsl(var(--bg-surface)), hsl(var(--bg-base)));
+
+  /* ═══════════════════════════════════════════
+     SHADOWS
+     ═══════════════════════════════════════════ */
+  
+  --shadow-sm: 0 1px 2px 0 hsl(0 0% 0% / 0.3);
+  --shadow-md: 0 4px 6px -1px hsl(0 0% 0% / 0.4), 0 2px 4px -2px hsl(0 0% 0% / 0.3);
+  --shadow-lg: 0 10px 15px -3px hsl(0 0% 0% / 0.5), 0 4px 6px -4px hsl(0 0% 0% / 0.4);
+  --shadow-glow-cyan: 0 0 20px hsl(var(--brand-cyan) / 0.3);
+  --shadow-glow-gold: 0 0 20px hsl(var(--brand-gold) / 0.3);
+
+  /* Card elevation tokens. Defined as `none` in dark mode so per-card
+     gradient/glow visual language is untouched; light-mode override
+     provides the Apple-style soft lift. See html.light below. */
+  --shadow-card-rest: none;
+  --shadow-card-hover: none;
+
+  /* ═══════════════════════════════════════════
+     TRANSITIONS
+     ═══════════════════════════════════════════ */
+  
+  --transition-fast: 150ms ease;
+  --transition-normal: 200ms ease;
+  --transition-slow: 300ms ease;
+
+  /* ═══════════════════════════════════════════
+     RADIUS
+     ═══════════════════════════════════════════ */
+  
+  --radius: 0.5rem;
+  --radius-sm: 0.25rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+
+  /* ═══════════════════════════════════════════
+     CONSENT BANNER — INVERTED SURFACE
+
+     The cookie-consent card is the one surface in the product that is
+     deliberately INVERTED against the active theme: a cream card on the
+     dark app, a near-black card on the light app. That inversion is the
+     whole point of the treatment — the banner is not part of the page,
+     it is a notice laid on top of it, and inverting it is what stops a
+     bottom-right card from reading as just another panel.
+
+     Values are translated from the Cognuum design system
+     (design-reference/cognuum-new/new-home/assets/css/cognuum-design-system.css,
+     §5 `.cta-solid`, which uses exactly this cream/obsidian pair for its
+     inverted primary CTA).
+
+     Declared as LITERAL HSL components in BOTH :root and html.light —
+     never as `var()` aliases of the ink ladder. A custom property's
+     var() is substituted where it is DECLARED, so an alias here would
+     freeze whichever ladder :root happened to hold and inherit that
+     frozen value into scopes that re-pin the ladder (see the loader
+     note at the end of this block for the full reasoning).
+
+     The card inverts against the page; the SOLID button inverts again
+     against the card, so --consent-cta-* lands back on the page's own
+     polarity. --consent-quiet-* is the outlined companion (§5 `.cta`).
+     ═══════════════════════════════════════════ */
+  --consent-surface: 40 21% 95%;          /* #f4f2ee — cream card on dark app */
+  --consent-ink: 240 13% 5%;              /* #0a0a0d — near-black, never pure */
+  --consent-ink-muted: 240 4% 37%;        /* #5a5a62 — body copy on cream */
+  --consent-border: 240 6% 20%;           /* hairline; alpha at usage site */
+  --consent-cta-bg: 228 10% 10%;          /* #16171b — solid button on cream */
+  --consent-cta-bg-hover: 0 0% 0%;
+  --consent-cta-ink: 40 21% 95%;
+
+  /* ═══════════════════════════════════════════
+     READING SURFACE — the earnings-transcript source panel.
+     FIXED light + dark palettes (defined once, never theme-flipped) so the
+     panel carries its OWN light/dark toggle independent of the app theme.
+     Components read them via var(); the values live here (the source of truth).
+     ═══════════════════════════════════════════ */
+  --read-light-bg: 40 30% 97%;          /* warm paper ground */
+  --read-light-panel: 40 33% 99%;       /* header / status band */
+  --read-light-ink: 240 14% 15%;        /* body copy — near-black */
+  --read-light-ink2: 240 6% 42%;        /* muted meta */
+  --read-light-speaker: 201 82% 37%;    /* accent — speaker names */
+  --read-light-border: 40 14% 85%;
+  --read-light-hl: 41 96% 63%;          /* exact evidence anchor */
+  --read-light-hl-ink: 30 40% 14%;
+  --read-light-hl-soft: 201 88% 88%;    /* fuzzy closest passage */
+
+  /* bg / panel / border are FALLBACKS: inside the console the dark reader
+     stamps data-cv2-scope-theme='dark' and resolves them through --cv2-bg /
+     --cv2-border, the dark nav column's own ground (transcript-source.css). */
+  --read-dark-bg: 222 20% 10%;
+  --read-dark-panel: 222 20% 13%;
+  --read-dark-ink: 210 20% 90%;
+  --read-dark-ink2: 214 12% 62%;
+  --read-dark-speaker: 195 88% 62%;
+  --read-dark-border: 216 20% 22%;
+  --read-dark-hl: 41 92% 56%;
+  --read-dark-hl-ink: 30 40% 12%;
+  --read-dark-hl-soft: 201 55% 28%;
+
+  /* ═══════════════════════════════════════════
+     ANNOTATION DEFAULTS (chart annotation layer)
+
+     The colours an annotation takes when it carries NO explicit user pick.
+     Resolved by the canvas renderer AT DRAW TIME, every frame — never baked
+     into stored annotation data (see
+     src/components/charts/professional/annotationTheme.ts).
+
+     The pair is selected by the POLARITY of the surface the annotation is
+     painted on: the chart theme's plot background when the renderer publishes
+     one, otherwise the app theme's --background. That is why these live in
+     :root and are NOT re-declared under html.light — the selection flips, the
+     values do not. A white-label skin that wants its own annotation ink
+     overrides these names in its own scope; a skin that omits them inherits
+     these, so no skin can be missing a token.
+     ═══════════════════════════════════════════ */
+
+  /* Arms, dots, control rings and the default label-chip FILL. */
+  --annotation-ink-on-dark: 210 40% 98%;        /* over a dark plot  (= --text-primary dark) */
+  --annotation-ink-on-light: 220 49% 8%;        /* over a light plot (= --text-primary light) */
+
+  /* Label-chip TEXT — the contrast partner of the ink above, so the chip pair
+     is legible by construction in either polarity. */
+  --annotation-label-fg-on-dark: 220 49% 8%;    /* text on the on-dark chip */
+  --annotation-label-fg-on-light: 210 40% 98%;  /* text on the on-light chip */
+
+  /* Label-chip TEXT when the chip is filled with a colour the USER picked.
+     Theme-invariant on purpose: a user-picked fill is the same colour in both
+     themes, so its ink must be too (the --on-brand-pill rationale). */
+  --annotation-label-on-color: 217 33% 17%;     /* #1e293b */
+
+  /* Regression band palette. The one place the annotation layer needs THREE
+     distinguishable defaults rather than one ink — mean, ±1σ, ±2σ have to be
+     told apart from each other as well as from the plot. Mid-lightness on
+     purpose so all three clear 3:1 against both a dark and a light plot; that
+     is why they are single values and not an on-dark/on-light pair. */
+  --annotation-regression-mean: 0 84% 60%;      /* #ef4444 red   — the mean line */
+  --annotation-regression-sd1: 215 12% 50%;     /* #707d8f grey  — ±1σ */
+  --annotation-regression-sd2: 142 71% 32%;     /* #188c42 green — ±2σ */
+
+  /* ═══════════════════════════════════════════
+     TERMINAL CHART PREVIEW
+     Reusable dark chart style tokens
+     ═══════════════════════════════════════════ */
+
+  --terminal-chart-bg: 218 40% 4%;      /* neutral near-black */
+  --terminal-chart-line: 174 76% 65%;          /* #5eead4 - cyan/teal */
+  --terminal-chart-grid: 217 33% 12%;
+  --terminal-chart-axis: 215 20% 50%;
+
+  /* ═══════════════════════════════════════════
+     INSIGHT SEVERITY TOKENS
+     Semantic colors for AI insights and alerts
+     ═══════════════════════════════════════════ */
+
+  /* Low severity - Cyan/Info */
+  --insight-low: 186 100% 60%;
+  --insight-low-bg: 186 100% 60% / 0.1;
+  --insight-low-border: 186 100% 60% / 0.2;
+  --insight-low-glow: 186 100% 60% / 0.2;
+
+  /* Medium severity - Amber/Warning */
+  --insight-medium: 45 93% 58%;
+  --insight-medium-bg: 45 93% 58% / 0.1;
+  --insight-medium-border: 45 93% 58% / 0.2;
+  --insight-medium-glow: 45 93% 58% / 0.2;
+
+  /* High severity - Rose/Critical */
+  --insight-high: 350 89% 60%;
+  --insight-high-bg: 350 89% 60% / 0.1;
+  --insight-high-border: 350 89% 60% / 0.2;
+  --insight-high-glow: 350 89% 60% / 0.2;
+
+  /* ═══════════════════════════════════════════
+     MARKET SIGNAL TOKENS
+     Semantic colors for bull/bear/neutral signals
+     ═══════════════════════════════════════════ */
+
+  /* Bullish — Green */
+  --signal-bullish: 142 71% 45%;          /* #22C55E */
+
+  /* Bearish — Red */
+  --signal-bearish: 0 84% 60%;            /* #EF4444 */
+
+  /* Neutral — Amber */
+  --signal-neutral: 45 93% 47%;           /* #F59E0B */
+
+  /* ═══════════════════════════════════════════
+     MODAL / PANEL OVERLAY (Phase D)
+     Formalizes the documented hardcoded #0D1117 exception across
+     modals/panels/drawers. Stored as HSL components so the editor
+     and existing Tailwind helpers (`hsl(var(--bg-overlay))`) work
+     uniformly. Light variant set in html.light.
+     ═══════════════════════════════════════════ */
+  --bg-overlay: 216 16% 5%;               /* neutral — menu / dock overlay */
+
+  /* ═══════════════════════════════════════════
+     MODAL / OVERLAY BACKDROP SCRIM
+     Darkening layer that sits behind floating UI (modals, drawers,
+     dialogs, command bars). Distinct from --bg-overlay (the surface
+     INSIDE the scrim). Stored as HSL components so opacity is
+     applied at the usage site via `bg-scrim/60` etc. Light variant
+     set in html.light to keep the scrim visible without overwhelming
+     a light theme. */
+  --scrim: 0 0% 0%;                       /* Pure black; opacity at usage site */
+
+  /* ═══════════════════════════════════════════
+     SURFACE / GLASS (Phase D)
+     Glass-morphism tokens for the command card, popovers, and any
+     other backdrop-blurred surface. `*-blur` and `*-saturate` are
+     length / percentage scalars (code-only in v1; admin can edit via
+     Import JSON). Color tokens are alpha-bearing HSL.
+     ═══════════════════════════════════════════ */
+  --surface-glass: 215 12% 9% / 0.75;   /* neutral near-black glass */
+  --surface-solid: 215 15% 7%;          /* = --bg-card */
+  --surface-glass-border: 214 10% 16% / 0.5;
+  --surface-glass-blur: 20px;
+  --surface-glass-saturate: 140%;
+  --surface-glass-shadow-1: 0 10px 30px hsl(0 0% 0% / 0.5);
+  --surface-glass-shadow-2: 0 2px 10px hsl(0 0% 0% / 0.3);
+
+  /* ═══════════════════════════════════════════
+     HOME / CONSOLE BACKGROUND (Phase D)
+     Composable radial+vertical gradient + grid mask. Channel-split
+     RGB tokens (`*-rgb` = "R G B") let us compose
+     `rgb(var(--*-rgb) / var(--*-opacity))` — modern slash syntax,
+     supported in Chrome ≥65 / Safari ≥12.1 / Firefox ≥52, well
+     below Vite's default browserslist floor. We avoided `rgb(from)`
+     (Chrome 119+ / Safari 16.4+) to keep the support matrix wide.
+     ═══════════════════════════════════════════ */
+  --home-bg-radial-color-rgb: 0 204 201;
+  --home-bg-radial-opacity-0: 0.12;
+  --home-bg-radial-opacity-25: 0.06;
+  --home-bg-vertical-0: 218 40% 4%;     /* neutral near-black gradient */
+  --home-bg-vertical-40: 216 22% 5%;
+  --home-bg-vertical-100: 215 14% 7%;
+  --home-bg-grid-color-rgb: 0 204 201;
+  --home-bg-grid-opacity: 0.07;
+  --home-bg-grid-size: 40px;
+  --home-bg-grid-mask-inner: 40%;
+  --home-bg-grid-mask-outer: 90%;
+
+  /* ═══════════════════════════════════════════
+     CENTER GLOW (Phase D)
+     Soft cyan spotlight behind the command card. Two-stop spread
+     gives a closer "near" halo and a wider "far" halo.
+     ═══════════════════════════════════════════ */
+  --glow-center-color-rgb: 8 204 253;
+  --glow-center-opacity-near: 0.15;
+  --glow-center-opacity-far: 0.08;
+  --glow-center-spread-near: 80px;
+  --glow-center-spread-far: 120px;
+
+  /* ═══════════════════════════════════════════
+     SIDEBAR (Phase D)
+     Translucent sidebar backgrounds + active-nav-item indicator.
+     ═══════════════════════════════════════════ */
+  --sidebar-bg: 218 40% 4% / 0.7;       /* neutral near-black */
+  --sidebar-border: 214 10% 16% / 0.4;
+  --sidebar-nav-active-bg: 186 100% 40% / 0.15;
+  --sidebar-nav-active-color: var(--brand-cyan);
+
+  /* ═══════════════════════════════════════════
+     PDF VIEWER CHROME GLOW
+     Brand-cyan radial-glow opacities used by src/styles/pdf-viewer.css
+     on the @react-pdf-viewer toolbar and canvas backdrop, plus the
+     PDFTopBar page-header strip rendered above the viewer. Three
+     scalars so dark mode preserves the historical hierarchy:
+     topbar (0.12) brighter than toolbar (0.08) brighter than canvas
+     (0.06). Light mode collapses all three to a subtle wash.
+     CSS-internal — not exposed in the theme editor.
+     ═══════════════════════════════════════════ */
+  --pdf-glow-topbar-opacity: 0.12;
+  --pdf-glow-toolbar-opacity: 0.08;
+  --pdf-glow-canvas-opacity: 0.06;
+
+  /* ═══════════════════════════════════════════
+     COGNUUM LOADER — the platform's canonical loading mark
+     Consumed by src/styles/cognuum-loader.css (CognuumLoader.tsx), the
+     ONE loading surface for every route-/surface-level hold: Suspense
+     boundaries, gated shells, full-page and full-panel waits.
+
+     WHY THESE LIVE HERE. The mark was born inside the console shell and
+     painted from the `--cv2-*` ink ladder, which is scoped to `.cv2-root`.
+     Anywhere else — /matrix, /secretdoor, the marketing routes — those
+     variables are undefined, `stroke: var(--cv2-t3)` falls back to the
+     SVG initial value (black), and the mark vanishes on a dark surface.
+     Promoting it to the canonical loader means its colour has to come
+     from the layer every surface can see: this one.
+
+     THE MAPPING. Both ink ladders are defined by contrast ratio against
+     their surfaces, and the two relevant rungs agree to within a tenth
+     of a stop, so the promotion is a within-tier swap — no visible shift
+     on the console surfaces the mark already served:
+
+       role           was          now                 dark    light
+       C stroke       --cv2-t3     --text-secondary    7.74    7.73
+       wordmark/dot   --cv2-t4     --text-muted        5.86    5.94
+
+     Deliberately NOT a brand colour. The loader is chrome that fronts
+     every surface in the product; painting it cyan would make the accent
+     the loudest thing on screen at the exact moment there is nothing to
+     look at. The retired Cytadel teal (#00CCC9) must never appear here
+     in any state — including the off-DOM fallbacks in the stylesheet.
+
+     AND DELIBERATELY NOT ITS OWN TOKEN. The obvious shape here is
+     `--loader-mark: var(--text-secondary)` on :root, and it is wrong:
+     a custom property's var() is substituted where the property is
+     DECLARED, so the alias would freeze html's ink and inherit that
+     frozen value into every subtree — including one that re-pins the
+     ladder underneath it. `html.light .matrix-root` does exactly that
+     (src/matrix/matrix.css: /matrix is dark-only and re-declares the
+     DARK rungs so it survives html.light), which is why that file also
+     has to re-declare every derived token — see --muted-foreground
+     there. An alias would have handed the loader light-mode ink on
+     /matrix's dark surface: the very defect this work exists to fix,
+     reintroduced one layer up.
+
+     So cognuum-loader.css names these two rungs at the call site and
+     substitution happens on the loader itself, inside whatever scope it
+     is standing in. Every present and future surface that pins the ink
+     ladder governs the loader for free, with nothing to remember.
+     ═══════════════════════════════════════════ */
+
+  /* ═══════════════════════════════════════════
+     COGNUUM BRAND GLYPH — the mark itself, one copy
+     Read via getComputedStyle by the canvases that DRAW the brand glyph
+     live (cognuumGlyph.ts drawBrandGlyph): CognuumLoader.tsx — the
+     hero animation looping on every page hold, on every surface — and,
+     through the .cv2-login aliases in src/console-v2/tokens.css, the
+     login orb (MemberOrb.tsx). Values ported from the deployed hero
+     source, www/assets/js/constellation.js drawBrandC; the www static
+     site restates them on its own token layer (base.css
+     --glyph-arc-from/-to and --brand-accent) because it cannot read
+     this cascade.
+
+     Encoding is deliberately NOT this file's HSL-components convention.
+     The arc stops are RGB TRIPLETS composed into canvas gradient stops
+     at draw time (the orb-palette precedent in console-v2/tokens.css),
+     and the accent is a complete hex converted at read time
+     (hexToRgbTriplet) — nothing consumes these through hsl(var(--x)).
+
+     PALETTE-INVARIANT: the glyph draws identically in both modes (the
+     hero source takes a light flag and never reads it) — only the
+     surface under it inverts. Declared ONCE, here at :root; html.light
+     must NOT re-declare them. src/tests/cognuumLockup.test.tsx pins the
+     single declaration and the accent's one-copy rule.
+
+     Unlike the ink rungs above, these MAY be reached through var()
+     aliases (.cv2-login does exactly that): the alias-freezing hazard
+     is about aliases of THEME-VARYING tokens, and a literal resolves
+     the same in every scope.
+     ═══════════════════════════════════════════ */
+  /* 2026 mark: dark-slate outer C (#424851), cyan inner C (#08ccfd, on purpose).
+     `-from` inks the outer arc; `-accent` inks the inner C; `-to` is retained
+     for the orb's legacy gradient consumers. */
+  --cognuum-glyph-from: 66, 72, 81;
+  --cognuum-glyph-to: 54, 58, 66;
+  --cognuum-glyph-accent: #08ccfd;
+}
+
+/* ═══════════════════════════════════════════
+   USER AVATAR
+   Cyan brand gradient that adapts per theme:
+   - dark: cyan → near-black page surface
+   - light: cyan → near-white page surface
+   The cyan ring + cyan top-left preserve brand identity in both modes.
+   ═══════════════════════════════════════════ */
+
+.avatar-gradient {
+  background: linear-gradient(135deg, hsl(var(--brand-cyan)) 0%, hsl(var(--bg-base)) 100%);
+  border: 1px solid hsl(var(--brand-cyan) / 0.3);
+}
+
+/* ═══════════════════════════════════════════
+   DARK MODE (default - we're dark-first)
+   ═══════════════════════════════════════════ */
+
+.dark {
+  /* Dark mode uses the same values - we're dark by default */
+}
+
+/* ═══════════════════════════════════════════
+   LIGHT MODE - Tesla/Apple Inspired
+   Clean, minimalist, high contrast
+   ═══════════════════════════════════════════ */
+
+html.light {
+  /* Background Scale — Phase D reconciliation
+     Values map Remi's spec onto the existing --bg-* tokens; no parallel
+     --surface-color namespace. */
+  --bg-base: 218 44% 98%;               /* #f7f9fc */
+  --bg-deep: 213 37% 95%;               /* #eef2f7 */
+  --bg-elevated: 217 29% 93%;           /* #e9edf3 */
+  --bg-surface: 220 14% 96%;            /* #F5F5F7 - Apple gray */
+  --bg-card: 0 0% 100%;                 /* White cards */
+  --bg-hover: 220 14% 94%;              /* Hover states */
+  --bg-active: 220 14% 91%;             /* Active/pressed */
+
+  /* Text Scale — the light half of the ink ladder. Same rungs, same ratios,
+     opposite direction of travel; see the :root block for the full table and
+     the reasoning. Measured against --bg-base (#f7f9fc) and --bg-card (white).
+     Phase D's spec hexes held for --text-primary; --text-secondary (5.75:1),
+     --text-muted (2.91:1) and the borrowed --text-disabled (1.95:1) did not.
+
+       --text-primary    17.94   (unchanged, Remi's #0b1220)
+       --text-secondary   7.73   (was 5.75 — headroom for the tiers below)
+       --text-muted       5.94   (was 2.91 ❌ AA)
+       --text-quiet       4.76   (new fourth ACTIVE tier)
+       --text-disabled    1.95   (WCAG-exempt: inactive UI only)                */
+  --text-primary: 220 49% 8%;           /* #0b1220 */
+  --text-secondary: 217 11% 32%;        /* #49505b */
+  --text-muted: 217 11% 39%;            /* #59616e */
+  --text-quiet: 217 11% 45%;            /* #66707f - Quietest ACTIVE text */
+  --text-disabled: 220 9% 72%;          /* Disabled text — WCAG-exempt, inactive UI only */
+
+  /* Border Scale — Phase D reconciliation
+     Spec is rgba(0,0,0,0.06) and rgba(0,0,0,0.04). Stored as
+     `0 0% 0% / A` so existing `hsl(var(--border-subtle))` consumers
+     keep working — `hsl(0 0% 0% / 0.06)` is valid CSS. */
+  --border-subtle: 0 0% 0% / 0.06;
+  --border-default: 0 0% 0% / 0.04;
+  --border-strong: 220 13% 78%;         /* Emphasized */
+  --border-accent: 186 100% 35%;        /* Cyan accent (darker for contrast) */
+
+  /* Main brand colours keep the same identity in both modes. Explicit
+     light/dark variants remain available for surface-specific treatments. */
+  --brand-cyan: 192 98.393574% 51.176471%;
+  --brand-cyan-light: 188 96% 51%;
+  --brand-cyan-dark: 188 96% 34%;
+  
+  --brand-gold: 39.9 80% 50.980392%;
+  --brand-gold-light: 40 85% 55%;
+  --brand-gold-dark: 40 80% 35%;
+  
+  --brand-pink: 329.863014 85.882353% 50%;
+  --brand-pink-light: 330 86% 60%;
+  --brand-pink-dark: 330 86% 40%;
+
+  /* Cream as a data mark: 88% L vanishes on near-white surfaces, so the ink
+     counterpart drops to a deep warm tan (same hue family, legible on
+     --bg-base and the warm light backgrounds). --brand-cream itself is
+     unchanged — it remains the editorial SURFACE tint in both themes. */
+  --brand-cream-ink: 40 45% 34%;
+
+  /* Semantic Colors - Adjusted */
+  --success: 142 71% 35%;
+  --success-light: 142 71% 45%;
+  --success-dark: 142 71% 25%;
+  
+  --warning: 45 93% 40%;
+  --warning-light: 45 93% 50%;
+  --warning-dark: 45 93% 30%;
+  
+  --error: 0 84% 50%;
+  --error-light: 0 84% 60%;
+  --error-dark: 0 84% 40%;
+  
+  --info: 186 100% 40%;
+  --info-light: 186 100% 50%;
+  --info-dark: 186 100% 30%;
+
+  /* Shadcn/UI Semantic Tokens */
+  --background: var(--bg-base);
+  --foreground: var(--text-primary);
+  
+  --card: var(--bg-card);
+  --card-foreground: var(--text-primary);
+  
+  --popover: var(--bg-elevated);
+  --popover-foreground: var(--text-primary);
+  
+  --primary: var(--brand-cyan);
+  --primary-foreground: 0 0% 100%;      /* White text on cyan */
+  
+  --secondary: var(--bg-surface);
+  --secondary-foreground: var(--text-primary);
+  
+  --muted: var(--bg-hover);
+  --muted-foreground: var(--text-muted);
+  
+  --accent: var(--brand-gold);
+  --accent-foreground: 0 0% 100%;
+
+  /* Light mode: brand-pink is darker (lightness 50%); white text reads. */
+  --tertiary-foreground: 0 0% 100%;
+
+  --destructive: var(--error);
+  --destructive-foreground: 0 0% 100%;
+  
+  --border: var(--border-default);
+  --input: var(--border-default);
+  --ring: var(--brand-cyan);
+
+  /* Shadows - Soft, diffused (Apple style) */
+  --shadow-sm: 0 1px 2px 0 hsl(0 0% 0% / 0.04);
+  --shadow-md: 0 4px 6px -1px hsl(0 0% 0% / 0.06), 0 2px 4px -2px hsl(0 0% 0% / 0.04);
+  --shadow-lg: 0 10px 15px -3px hsl(0 0% 0% / 0.08), 0 4px 6px -4px hsl(0 0% 0% / 0.06);
+  --shadow-glow-cyan: 0 0 20px hsl(var(--brand-cyan) / 0.15);
+  --shadow-glow-gold: 0 0 20px hsl(var(--brand-gold) / 0.15);
+
+  /* Apple-style premium card elevation (light mode only).
+     Restrained at rest, lifts on hover. The dark mode equivalents fall
+     back to `none` so per-card gradient/glow language is undisturbed. */
+  --shadow-card-rest: 0 1px 2px 0 hsl(220 10% 10% / 0.04),
+                      0 1px 1px 0 hsl(220 10% 10% / 0.02);
+  --shadow-card-hover: 0 4px 12px 0 hsl(220 10% 10% / 0.08),
+                       0 2px 4px 0 hsl(220 10% 10% / 0.04);
+
+  /* ═══════════════════════════════════════════
+     MARKET SIGNAL TOKENS — light mode
+     Darker than dark-mode equivalents so they read on white surfaces.
+     Neutral shifted from amber (45) toward darker gold (38) — pure
+     mid-amber washes out on white.
+     ═══════════════════════════════════════════ */
+  --signal-bullish: 142 71% 35%;
+  --signal-bearish: 0 84% 50%;
+  --signal-neutral: 38 92% 38%;
+
+  /* ═══════════════════════════════════════════
+     INSIGHT SEVERITY TOKENS — light mode
+     Base colors darker than dark equivalents; bg-tint kept very low
+     so cards don't oversaturate; borders bumped to ~0.3 alpha so
+     they read on white; glows reduced to 0.06 (glows look noisy on
+     white — Phase D will refine).
+     ═══════════════════════════════════════════ */
+  --insight-low: 186 100% 38%;
+  --insight-low-bg: 186 100% 38% / 0.08;
+  --insight-low-border: 186 100% 38% / 0.30;
+  --insight-low-glow: 186 100% 38% / 0.06;
+
+  --insight-medium: 38 92% 42%;
+  --insight-medium-bg: 38 92% 42% / 0.10;
+  --insight-medium-border: 38 92% 42% / 0.35;
+  --insight-medium-glow: 38 92% 42% / 0.06;
+
+  --insight-high: 350 89% 48%;
+  --insight-high-bg: 350 89% 48% / 0.08;
+  --insight-high-border: 350 89% 48% / 0.30;
+  --insight-high-glow: 350 89% 48% / 0.06;
+
+  /* ═══════════════════════════════════════════
+     TERMINAL CHART PREVIEW — light mode
+     Near-white canvas with subtle cool tint; line uses darker teal
+     for visibility; grid + axis match the light border / muted-text
+     scales so they recede appropriately.
+     ═══════════════════════════════════════════ */
+  --terminal-chart-bg: 220 20% 98%;
+  --terminal-chart-line: 174 76% 35%;
+  --terminal-chart-grid: 220 13% 91%;
+  --terminal-chart-axis: 220 9% 56%;
+
+  /* ═══════════════════════════════════════════
+     CHART PALETTE — light mode (chart-4..8)
+     chart-1..3 already track brand-cyan / brand-pink / brand-gold,
+     which are overridden above. chart-4..8 are hard-coded HSL in
+     :root and need explicit light overrides for white-bg legibility.
+     chart-8 (yellow in dark) is shifted toward dark gold — pure
+     yellow is unreadable on white.
+     ═══════════════════════════════════════════ */
+  --chart-4: 142 71% 35%;
+  --chart-5: 262 70% 48%;
+  --chart-6: 24 95% 45%;
+  --chart-7: 199 89% 38%;
+  /* chart-8 was 38 92% 38% in Phase C — collided with --signal-neutral
+     and --insight-medium light values. Shifted to olive/lime so it
+     stays distinct from gold-family tokens. */
+  --chart-8: 52 75% 42%;
+
+  /* ═══════════════════════════════════════════
+     PHASE D — Light-mode surface system
+     ═══════════════════════════════════════════ */
+
+  /* Modal / panel overlay — matches --bg-base for surface continuity */
+  --bg-overlay: 218 44% 98%;            /* #f7f9fc */
+
+  /* Backdrop scrim — light-mode value uses a dark navy rather than
+     pure black. Pure black at 60–80% opacity over a light page reads
+     as harsh and oppressive; a desaturated dark navy still produces
+     a clearly visible scrim while feeling appropriate for the light
+     theme. The opacity comes from the usage-site (e.g. bg-scrim/60). */
+  --scrim: 220 30% 20%;                 /* Dark navy for light mode */
+
+  /* Surface / glass — translucent white over the home-bg gradient */
+  --surface-glass: 0 0% 100% / 0.65;
+  --surface-solid: 0 0% 100%;
+  --surface-glass-border: 0 0% 100% / 0.7;
+  /* blur + saturate are shared shape tokens (kept in :root only) */
+  --surface-glass-shadow-1: 0 10px 30px hsl(220 49% 8% / 0.08);
+  --surface-glass-shadow-2: 0 2px 10px hsl(220 49% 8% / 0.04);
+
+  /* Home / console background — radial cyan halo over a vertical
+     near-white → faint-blue gradient. */
+  --home-bg-radial-color-rgb: 0 204 201;
+  --home-bg-radial-opacity-0: 0.06;
+  --home-bg-radial-opacity-25: 0.02;
+  --home-bg-vertical-0: 218 44% 98%;    /* matches --bg-base */
+  --home-bg-vertical-40: 213 37% 95%;   /* matches --bg-deep */
+  --home-bg-vertical-100: 217 29% 93%;  /* matches --bg-elevated */
+  --home-bg-grid-color-rgb: 0 0 0;
+  --home-bg-grid-opacity: 0.035;
+
+  /* Center glow — softer in light to avoid noisy halo on white */
+  --glow-center-color-rgb: 8 204 253;
+  --glow-center-opacity-near: 0.08;
+  --glow-center-opacity-far: 0.04;
+
+  /* Sidebar — translucent white with very faint border */
+  --sidebar-bg: 0 0% 100% / 0.7;
+  --sidebar-border: 0 0% 0% / 0.05;
+  --sidebar-nav-active-bg: 196 98% 51% / 0.10;
+  --sidebar-nav-active-color: var(--brand-cyan);
+
+  /* PDF viewer chrome glow — light mode collapses all three opacities to
+     a subtle wash so the cyan halo doesn't overwhelm a near-white surface. */
+  --pdf-glow-topbar-opacity: 0.04;
+  --pdf-glow-toolbar-opacity: 0.04;
+  --pdf-glow-canvas-opacity: 0.04;
+
+  /* Consent banner — the inversion flips with the theme. Light app gets
+     the obsidian card; the solid button inverts again back to cream.
+     Literal values, not aliases — see the :root block for why. */
+  --consent-surface: 228 10% 10%;         /* #16171b — obsidian card on light app */
+  --consent-ink: 40 21% 95%;              /* #f4f2ee */
+  --consent-ink-muted: 215 20% 65%;       /* #94a3b8 — body copy on obsidian */
+  --consent-border: 40 21% 95%;           /* hairline; alpha at usage site */
+  --consent-cta-bg: 40 21% 95%;           /* #f4f2ee — solid button on obsidian */
+  --consent-cta-bg-hover: 0 0% 100%;
+  --consent-cta-ink: 228 10% 10%;
+}
+
+/* ============================================================
+   A THEMED SCOPE INSIDE THE CONSOLE (2026-09-10)
+   The Council and Help docks carry their own palette
+   ([data-cv2-scope-theme] on the aside, see console-v2/tokens.css
+   for the cv2 ladder). The semantic tokens below are aliases of
+   these base tokens — but an alias resolves WHERE IT IS DECLARED
+   (on :root), so re-declaring the base under the scope alone
+   changes nothing for text-foreground / bg-card / border-border.
+   The aliases are therefore declared again under the scope,
+   where they resolve against the scoped base. Base values mirror
+   the two blocks above, byte for byte.
+   ============================================================ */
+/* The charting right dock (features/charting, .ch-shell) wears the same
+   scope attribute so the two side panels share one palette contract on both
+   of its mounts — inside the console frame and standalone at /analysis. */
+html[data-charting-skin] [data-cv2-scope-theme],
+.ch-shell [data-cv2-scope-theme],
+.cv2-root [data-cv2-scope-theme] {
+  --background: var(--bg-base);
+  --foreground: var(--text-primary);
+  --card: var(--bg-card);
+  --card-foreground: var(--text-primary);
+  --popover: var(--bg-elevated);
+  --popover-foreground: var(--text-primary);
+  --secondary: var(--bg-surface);
+  --secondary-foreground: var(--text-primary);
+  --muted: var(--bg-hover);
+  --muted-foreground: var(--text-muted);
+  --border: var(--border-default);
+  --input: var(--border-default);
+}
+html[data-charting-skin] [data-cv2-scope-theme='dark'],
+.ch-shell [data-cv2-scope-theme='dark'],
+.cv2-root [data-cv2-scope-theme='dark'] {
+  /* Neutral near-black ladder (2026-09-19). Base honours Remi's #06090e; the
+     saturation is held LOW and tapers so NOTHING reads blue — the earlier
+     hue-215 @ 38% sat looked near-black at the page but turned visibly blue on
+     the lighter chrome (nav/menu/cards at L7-8%). Panels barely lift off the
+     page (the calm-terminal look). Text/scrim unchanged — WCAG-tuned. */
+  --bg-base: 218 40% 4%;                /* #06090e — page (given) */
+  --bg-elevated: 216 16% 5%;            /* neutral — popover / menu / nav */
+  --bg-surface: 216 16% 6%;             /* neutral — interactive surface */
+  --bg-card: 215 15% 7%;                /* neutral — card */
+  --bg-hover: 214 12% 11%;              /* neutral — hover row */
+  --bg-active: 214 11% 15%;             /* neutral — active/pressed */
+  --bg-overlay: 216 16% 5%;             /* neutral — menu / dock overlay */
+  --border-subtle: 214 12% 13%;         /* neutral — hairline */
+  --border-default: 214 10% 16%;        /* neutral — default */
+  --border-strong: 214 9% 20%;          /* neutral — strong */
+  --text-primary: 210 40% 98%;
+  --text-secondary: 215 20% 69%;
+  --text-muted: 215 16% 60%;
+  --text-quiet: 215 16% 54%;
+  --scrim: 0 0% 0%;
+  color-scheme: dark;
+}
+html[data-charting-skin] [data-cv2-scope-theme='light'],
+.ch-shell [data-cv2-scope-theme='light'],
+.cv2-root [data-cv2-scope-theme='light'] {
+  --bg-base: 218 44% 98%;
+  --bg-elevated: 217 29% 93%;
+  --bg-surface: 220 14% 96%;
+  --bg-card: 0 0% 100%;
+  --bg-hover: 220 14% 94%;
+  --bg-active: 220 14% 91%;
+  --bg-overlay: 218 44% 98%;
+  --border-subtle: 0 0% 0% / 0.06;
+  --border-default: 0 0% 0% / 0.04;
+  --border-strong: 220 13% 78%;
+  --text-primary: 220 49% 8%;
+  --text-secondary: 217 11% 32%;
+  --text-muted: 217 11% 39%;
+  --text-quiet: 217 11% 45%;
+  --scrim: 220 30% 20%;
+  color-scheme: light;
+}
+
+/* ── THE CHARTING SCOPES CARRY THE WHOLE PALETTE (Remi, 2026-09-17) ───────
+   The Analysis frame (features/charting, .ch-shell) is stamped
+   data-cv2-scope-theme='dark' for its whole life — the tab strip, the
+   omnibox bar, the rails, the status strip and the company info panel stay
+   dark while the platform toggles light/dark around them. The blocks above
+   re-declare the surfaces, borders and inks; html.light ALSO overrides the
+   state hues, the on-accent inks and the brand variants, and the cytadel
+   skin's --ch-ok / --ch-warn / --ch-danger / --ch-text-on-accent /
+   --ch-palette-* map onto exactly those. Under a light platform the dark
+   frame would otherwise wear the light-tuned greens / ambers / reds and
+   WHITE ink on the (mode-invariant) cyan — the solid buttons and the active
+   favourite pill at 1.6:1. So the DARK charting scopes re-declare that
+   family too, byte for byte from :root. Charting scopes only — the frame,
+   the dock slot inside it, the stamped menus and portals, the hosted
+   instrument; the console's own docks keep their existing contract. No
+   light twin on purpose: a light dock inside the frame inherits these from
+   the frame, exactly the values it inherited from <html> on the dark
+   platform before the frame was pinned, so the default view (dark platform,
+   light dock) is byte-identical. */
+.ch-shell[data-cv2-scope-theme='dark'],
+.ch-shell [data-cv2-scope-theme='dark'],
+html[data-charting-skin] .ch-menu[data-cv2-scope-theme='dark'],
+html[data-charting-skin] [data-ch-scope-menu][data-cv2-scope-theme='dark'],
+html[data-charting-skin] [data-ch-portal-glass][data-cv2-scope-theme='dark'],
+html[data-charting-skin] .ch-chart-inspector[data-cv2-scope-theme='dark'],
+html[data-charting-skin] .ch-instrument[data-cv2-scope-theme='dark'] {
+  --bg-deep: 216 22% 5%;                /* neutral — between page and card */
+  --border-accent: 186 100% 40%;
+  --text-disabled: 215 16% 35%;
+  --brand-cyan-light: 188 96% 61%;
+  --brand-cyan-dark: 188 96% 41%;
+  --brand-gold-light: 40 85% 60%;
+  --brand-gold-dark: 40 80% 40%;
+  --brand-pink-light: 330 86% 70%;
+  --brand-pink-dark: 330 86% 50%;
+  --success: 142 71% 45%;
+  --success-light: 142 71% 55%;
+  --success-dark: 142 71% 35%;
+  --warning: 45 93% 47%;
+  --warning-light: 45 93% 58%;
+  --warning-dark: 45 93% 37%;
+  --error: 0 84% 60%;
+  --error-light: 0 84% 70%;
+  --error-dark: 0 84% 50%;
+  --info: 186 100% 50%;
+  --info-light: 186 100% 60%;
+  --info-dark: 186 100% 40%;
+  --primary-foreground: var(--bg-base);
+  --accent-foreground: var(--bg-base);
+  --tertiary-foreground: var(--bg-base);
+  --destructive-foreground: var(--text-primary);
+}

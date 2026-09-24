@@ -1,0 +1,8 @@
+{
+  "productName": "Cognuum Staging",
+  "identifier": "com.cognuum.desktop.staging",
+  "plugins": {
+    "desktop": { "origin": "https://staging-access.cognuum.com", "channel": "staging", "scheme": "cognuum-staging" },
+    "deep-link": { "desktop": { "schemes": ["cognuum-staging"] } }
+  }
+}

@@ -1,0 +1,4 @@
+@import url('./design-tokens.css');
+body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: hsl(var(--bg-base)); color: hsl(var(--text-primary)); font-family: system-ui, sans-serif; }
+main { max-width: 36rem; padding: 2rem; }
+p { color: hsl(var(--text-secondary)); line-height: 1.6; }
