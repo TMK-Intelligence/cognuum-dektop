@@ -85,14 +85,13 @@ generated or maintained here.
 
 ## Signing and releases
 
-The repository starts **private** pending the owner's visibility decision.
-The current download/update architecture uses public GitHub release assets.
-Customer delivery therefore requires making this shell-only repository public,
-or implementing an authenticated artifact-delivery service before shipping.
-Never embed a GitHub token in the app. A private GitHub release URL will not work
-for customers without GitHub repository access. CI checks work while private.
+This shell-only repository is **public** with the owner's approval. Installers
+and signed updater manifests use public GitHub release assets; the application
+and its data remain protected by the production platform's authentication and
+entitlement checks. Never embed a GitHub token in the app.
 
-Create protected GitHub environments `desktop-staging` and `desktop-production`.
+GitHub environments `desktop-staging` and `desktop-production` are created and
+restricted to the `main` branch. Signing credentials are not configured yet.
 Configure these **secret names** (never commit values):
 
 | Secret | Purpose |
@@ -148,3 +147,21 @@ podcast audio, AI streaming, sleep/wake, network loss/reconnect, external links,
 keyboard shortcuts, and update/restart. Confirm production release identity at
 https://access.cognuum.com/api/release and record web SHA plus native version.
 Browser automation alone is not verification of WKWebView/WebView2.
+
+## Organization enrollment still required
+
+The owner confirmed that the Apple and Windows signing accounts/certificates
+are not available yet. Customer installers must wait for these credentials.
+
+- [Enroll the organization in Apple Developer](https://developer.apple.com/programs/enroll/)
+  using its existing D-U-N-S number. The authorized account holder completes the
+  identity checks, agreement and membership purchase. Then obtain a Developer ID
+  Application certificate and notarization credentials for distribution outside
+  the Mac App Store.
+- Obtain a Windows Authenticode certificate or managed signing service that
+  accepts the organization's jurisdiction. Follow the [Tauri signing guide](https://v2.tauri.app/distribute/sign/windows/)
+  and configure the CI signing commands above. A Microsoft Store listing is not
+  required for direct installer downloads.
+
+Account enrollment, contracts and purchases are owner actions. Do not publish
+unsigned builds as production installers while waiting for approval.
