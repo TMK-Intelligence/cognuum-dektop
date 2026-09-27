@@ -6,7 +6,13 @@ export function validateConfig(config, channel = 'production') {
   if (!['production', 'staging'].includes(channel)) throw new Error('Unknown channel');
   const desktop = config.plugins?.desktop;
   if (desktop?.origin !== expected[0] || desktop?.channel !== channel || desktop?.scheme !== expected[1] || config.identifier !== expected[2]) throw new Error('Desktop environment mismatch');
-  if (config.app.withGlobalTauri !== false || config.app.security.capabilities.length !== 0) throw new Error('Remote native IPC must remain disabled');
+  if (config.app.withGlobalTauri !== false) throw new Error('Global native APIs must remain disabled');
+  const expectedCapability = {
+    identifier: 'desktop-workspace', local: false, windows: ['main', 'workspace-*'], platforms: ['macOS', 'windows'],
+    remote: { urls: [`${expected[0]}/*`] },
+    permissions: ['allow-desktop-auth-read', 'allow-desktop-auth-write', 'allow-desktop-auth-lock', 'allow-desktop-auth-unlock', 'allow-desktop-workspace-ready', 'core:event:allow-listen', 'core:event:allow-unlisten'],
+  };
+  if (JSON.stringify(config.app.security.capabilities) !== JSON.stringify([expectedCapability])) throw new Error('Only the channel-bound workspace bridge is permitted');
   if (config.app.windows.length !== 0) throw new Error('Windows must use the guarded native builder');
   if (config.plugins['deep-link'].desktop.schemes.join(',') !== expected[1]) throw new Error('Deep-link channel mismatch');
 }

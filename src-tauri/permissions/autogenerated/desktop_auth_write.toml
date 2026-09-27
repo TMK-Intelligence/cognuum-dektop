@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-desktop-auth-write"
+description = "Enables the desktop_auth_write command without any pre-configured scope."
+commands.allow = ["desktop_auth_write"]
+
+[[permission]]
+identifier = "deny-desktop-auth-write"
+description = "Denies the desktop_auth_write command without any pre-configured scope."
+commands.deny = ["desktop_auth_write"]

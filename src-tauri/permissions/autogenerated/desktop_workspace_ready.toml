@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-desktop-workspace-ready"
+description = "Enables the desktop_workspace_ready command without any pre-configured scope."
+commands.allow = ["desktop_workspace_ready"]
+
+[[permission]]
+identifier = "deny-desktop-workspace-ready"
+description = "Denies the desktop_workspace_ready command without any pre-configured scope."
+commands.deny = ["desktop_workspace_ready"]

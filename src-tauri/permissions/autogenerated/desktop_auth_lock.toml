@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-desktop-auth-lock"
+description = "Enables the desktop_auth_lock command without any pre-configured scope."
+commands.allow = ["desktop_auth_lock"]
+
+[[permission]]
+identifier = "deny-desktop-auth-lock"
+description = "Denies the desktop_auth_lock command without any pre-configured scope."
+commands.deny = ["desktop_auth_lock"]

@@ -64,12 +64,48 @@ Persistent login reuses the platform's opt-in HttpOnly “Remember me” cookie.
 Test a full process quit/relaunch on each OS; never restore persistent refresh
 tokens through localStorage or unencrypted native files.
 
+## Multiple windows
+
+Sign in once, then use the native **Window** menu:
+
+| Action | Mac | Windows |
+| --- | --- | --- |
+| New Window | Command+N | Ctrl+N |
+| Open This Page in New Window | Command+Shift+N | Ctrl+Shift+N |
+| Save Workspace | Command+Shift+S | Ctrl+Shift+S |
+
+Up to eight independent windows can be arranged across monitors. Internal product
+links that request a new window also open here. **Show All Windows** reveals hidden
+windows. Closing the primary window keeps it available while other windows are
+open; on macOS use **Quit Cognuum** to exit the process.
+
+The app saves open product pages, window sizes and positions when focus changes
+and on quit. After relaunch, the same account's workspace reopens after login and
+MFA. Remember me retains its existing opt-in behavior. Sign-out clears the saved
+workspace and closes secondary windows. Routes restore saved platform content;
+unsaved forms, transient chart edits and in-page scroll positions are not captured.
+Linked symbols, docking and named workspace presets are outside this first version.
+
+This requires the companion platform workspace protocol (version 1). Older desktop
+installers keep their original authentication behavior. Deploy the platform adapter
+before publishing a desktop build that advertises this protocol.
+
 ## Native security and behavior
 
 - Only the exact channel origin can navigate inside the main webview. Other HTTPS
   pages open in the system browser. File/javascript/other custom schemes are denied.
-- Hosted pages receive **no Tauri IPC capabilities**. Native menus handle updates
-  and settings. No remote shell, filesystem or arbitrary native commands exist.
+- Only the exact channel origin in `main` / `workspace-*` receives five narrow
+  commands for in-memory session read/write, authentication locking and workspace
+  readiness, plus auth-event subscription. Native menus own window creation and
+  updates. No remote shell, filesystem or general window-management capability exists.
+- All windows share one session in native process memory. Per-window sessionStorage
+  mirrors remain; tokens never enter workspace files or localStorage. A native lock
+  serializes Supabase refresh operations and releases abandoned leases on document
+  navigation/window destruction. Notifications carry only a revision and event name.
+- `workspace.json` stores the account ID and sanitized product routes; the window
+  state plugin stores geometry. OAuth URLs, fragments and unapproved query fields
+  are discarded. Workspace restoration never grants data access: existing server
+  authorization and MFA remain authoritative.
 - Updater signatures are separate from Apple/Windows code signing. Release builds
   receive a public updater key; private keys stay in protected CI secrets.
 - Existing hosted CSP remains authoritative for remote pages, including PDFs and

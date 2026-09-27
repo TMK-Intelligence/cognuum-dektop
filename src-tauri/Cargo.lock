@@ -482,8 +482,9 @@ dependencies = [
 
 [[package]]
 name = "cognuum-desktop"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
+ "serde",
  "serde_json",
  "tauri",
  "tauri-build",
@@ -493,6 +494,7 @@ dependencies = [
  "tauri-plugin-single-instance",
  "tauri-plugin-updater",
  "tauri-plugin-window-state",
+ "tokio",
  "url",
 ]
 

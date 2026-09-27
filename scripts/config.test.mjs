@@ -6,13 +6,17 @@ const base = JSON.parse(readFileSync(new URL('../src-tauri/tauri.conf.json', imp
 const staging = JSON.parse(readFileSync(new URL('../src-tauri/tauri.staging.conf.json', import.meta.url)));
 test('production and staging are separately bound to the intended origin', () => {
   validateConfig(base);
-  validateConfig({ ...base, ...staging, plugins: { ...base.plugins, ...staging.plugins } }, 'staging');
+  validateConfig({ ...base, ...staging, app: { ...base.app, security: { ...base.app.security, ...staging.app.security } }, plugins: { ...base.plugins, ...staging.plugins } }, 'staging');
 });
 test('red proof: configuration checker rejects staging in production and exposed native APIs', () => {
   const wrongOrigin = structuredClone(base); wrongOrigin.plugins.desktop.origin = 'https://dev-access.cognuum.com';
   assert.throws(() => validateConfig(wrongOrigin));
   const bridge = structuredClone(base); bridge.app.security.capabilities = ['remote-filesystem'];
   assert.throws(() => validateConfig(bridge));
+  const crossOrigin = structuredClone(base); crossOrigin.app.security.capabilities[0].remote.urls.push('https://evil.test/*');
+  assert.throws(() => validateConfig(crossOrigin));
+  const filesystem = structuredClone(base); filesystem.app.security.capabilities[0].permissions.push('fs:default');
+  assert.throws(() => validateConfig(filesystem));
   const global = structuredClone(base); global.app.withGlobalTauri = true;
   assert.throws(() => validateConfig(global));
 });

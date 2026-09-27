@@ -1,3 +1,12 @@
 fn main() {
-    tauri_build::build();
+    tauri_build::try_build(tauri_build::Attributes::new().app_manifest(
+        tauri_build::AppManifest::new().commands(&[
+            "desktop_auth_read",
+            "desktop_auth_write",
+            "desktop_auth_lock",
+            "desktop_auth_unlock",
+            "desktop_workspace_ready",
+        ]),
+    ))
+    .expect("Could not build the desktop permission manifest");
 }
