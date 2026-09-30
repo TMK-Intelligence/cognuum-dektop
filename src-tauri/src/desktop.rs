@@ -323,11 +323,8 @@ pub fn create(
         "downloads": {"protocol":1}, "voice": {"protocol":1,"language":"en"} });
     let origin_json = serde_json::to_string(&env.origin).expect("origin JSON");
     let script = format!(
-        r#"if (location.origin === {origin_json}) {{
-        Object.defineProperty(window, '__COGNUUM_DESKTOP__', {{ value: Object.freeze({metadata}), configurable: false }});
-        const mark = () => {{ document.documentElement.dataset.tauri = 'true'; document.documentElement.dataset.appVersion = window.__COGNUUM_DESKTOP__.version; }};
-        if (document.documentElement) mark(); else document.addEventListener('DOMContentLoaded', mark, {{ once: true }});
-    }}"#
+        "{}({metadata}, {origin_json});",
+        include_str!("desktop-runtime.js")
     );
     let nav_app = app.clone();
     let nav_origin = env.origin.clone();

@@ -99,6 +99,10 @@ The companion web adapter exposes **Max** only in supporting native builds, on
 console/analysis pages, for signed-in members admitted by the existing seeded
 `desktop_app` access gate. Voice starts **off**. Enable it in Max's settings:
 
+Native windows use the **Max** control for chart dictation as well as navigation.
+The unsupported browser speech API is not exposed in the desktop webview, so the
+chart's browser-only microphone is hidden. Ordinary browsers are unaffected.
+
 - Say **“Hey Max, open Analysis”** or **“Listen, load Apple”** in one breath.
   “Listen” can be disabled separately. Wake activation operates only while a
   Cognuum window is focused. A wake-only phrase leaves five seconds for a request.
