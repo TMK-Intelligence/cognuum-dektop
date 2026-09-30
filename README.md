@@ -26,6 +26,7 @@ The dev-access host is intentionally never used (it uses the production backend)
 
 ```sh
 npm run check
+node scripts/voice-model.mjs
 cargo fmt --manifest-path src-tauri/Cargo.toml --check
 cargo test --locked --manifest-path src-tauri/Cargo.toml
 cargo clippy --locked --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
@@ -92,6 +93,46 @@ before publishing a desktop build that advertises this protocol.
 
 ## Native security and behavior
 
+### Max voice (protocol 1)
+
+The companion web adapter exposes **Max** only in supporting native builds, on
+console/analysis pages, for signed-in members admitted by the existing seeded
+`desktop_app` access gate. Voice starts **off**. Enable it in Max's settings:
+
+- Say **“Hey Max, open Analysis”** or **“Listen, load Apple”** in one breath.
+  “Listen” can be disabled separately. Wake activation operates only while a
+  Cognuum window is focused. A wake-only phrase leaves five seconds for a request.
+- Hold **Ctrl+Shift+Space**, speak, then release. The chord is configurable on
+  macOS and Windows. Turn off wake activation for shortcut-only microphone use.
+- Escape cancels. Blur, page navigation, chart switches, account changes,
+  sign-out and closing a window revoke the utterance. Only final transcripts run.
+
+Speech runs **locally in English**, using the pinned Apache-2.0 sherpa-onnx 1.13.8
+streaming Zipformer model (`en-2023-06-26`, int8). The model adds approximately
+68 MiB of resources. `voice-model.mjs` checks the archive SHA-256 and each extracted
+file; the vocabulary in `assets/voice-bpe.vocab` is exported from that archive's
+`bpe.model` (500 pieces with their scores). A small phrase bias helps the recognizer
+spell “Hey Max”; it does not permit non-anchored activations. Attribution and the
+Apache license ship with the model. Build-time native libraries come from the
+pinned sherpa-onnx crate's official release downloader.
+
+After first enable, the model stays warm in memory until exit. Capture is
+serialized across windows. Audio is bounded, discarded after recognition, never
+logged, stored or sent to a cloud service. No transcription API key or per-minute
+voice fee is introduced. Local navigation uses an exact destination allowlist;
+chart requests reuse the existing omnibox fast path, AI entitlement/usage checks,
+ambiguity handling and undo. Complex chart requests retain their existing AI cost.
+Preferences persist, microphone consent does not persist across a page reload or
+app restart. OS microphone permission is still required.
+
+Validation before release: run synthetic speech fixtures and then test real
+microphone wake detection, false activations, accents, Bluetooth device changes,
+permission denial, CPU/battery use and end-to-end chart latency on both platforms.
+CI compilation alone does not prove those behaviors. The ignored `speech_fixture`
+Rust test accepts `COGNUUM_VOICE_FIXTURE` (local PCM WAV) and
+`COGNUUM_VOICE_EXPECT` (expected transcript); it never records microphone audio.
+Deploy the gated web adapter before publishing the 0.3 desktop release.
+
 Generated intelligence PDFs use the platform's PDF renderer and a narrow native
 save command (`downloads.protocol: 1`). Files go to the OS **Downloads** folder;
 existing names receive a numbered suffix. The platform waits for the completed
@@ -103,9 +144,9 @@ to enable it. Older installers continue using their browser download behavior.
 
 - Only the exact channel origin can navigate inside the main webview. Other HTTPS
   pages open in the system browser. File/javascript/other custom schemes are denied.
-- Only the exact channel origin in `main` / `workspace-*` receives six narrow
+- Only the exact channel origin in `main` / `workspace-*` receives eight narrow
   commands for in-memory session read/write, authentication locking and workspace
-  readiness and PDF saving, plus auth-event subscription. Native menus own window
+  readiness, PDF saving and opt-in voice sessions, plus scoped event subscription. Native menus own window
   creation and updates. No remote shell, general filesystem or window-management
   capability exists.
 - All windows share one session in native process memory. Per-window sessionStorage

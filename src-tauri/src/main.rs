@@ -3,6 +3,8 @@
 mod desktop;
 mod downloads;
 mod policy;
+mod voice;
+mod voice_protocol;
 mod workspace;
 use std::sync::atomic::Ordering;
 use tauri::{
@@ -113,7 +115,9 @@ fn main() {
             desktop::desktop_auth_lock,
             desktop::desktop_auth_unlock,
             desktop::desktop_workspace_ready,
-            downloads::desktop_save_pdf
+            downloads::desktop_save_pdf,
+            voice::desktop_voice_start,
+            voice::desktop_voice_control
         ])
         .on_window_event(desktop::window_event)
         .setup(|app| {
@@ -136,6 +140,7 @@ fn main() {
                 return Err("Invalid desktop environment".into());
             }
             app.manage(env.clone());
+            app.manage(voice::VoiceState::default());
             app.manage(workspace::WorkspaceState::new(desktop::load(
                 app.handle(),
                 &env.origin,

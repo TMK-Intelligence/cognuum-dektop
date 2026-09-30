@@ -8,7 +8,7 @@ use tauri_plugin_opener::OpenerExt;
 use tauri_plugin_window_state::{AppHandleExt, StateFlags};
 use url::Url;
 
-fn verify(window: &WebviewWindow) -> Result<(), String> {
+pub(crate) fn verify(window: &WebviewWindow) -> Result<(), String> {
     let env = window.state::<Environment>();
     if !valid_label(window.label())
         || window
@@ -59,6 +59,7 @@ pub fn desktop_auth_write(
             .as_ref()
             .is_some_and(|previous| Some(previous) != owner.as_ref());
         if change.event == "SIGNED_OUT" || changed_account {
+            crate::voice::stop(app, None);
             *state.ready_owner.lock().expect("workspace owner") = None;
             *state.saved.lock().expect("saved workspace") = SavedWorkspace::default();
             write_saved(app);
@@ -319,7 +320,7 @@ pub fn create(
     let env = app.state::<Environment>().inner().clone();
     let metadata = serde_json::json!({ "version":app.package_info().version.to_string(), "channel":env.channel, "scheme":env.scheme,
         "workspace": {"protocol":1,"windowLabel":label,"maxWindows":MAX_WINDOWS},
-        "downloads": {"protocol":1} });
+        "downloads": {"protocol":1}, "voice": {"protocol":1,"language":"en"} });
     let origin_json = serde_json::to_string(&env.origin).expect("origin JSON");
     let script = format!(
         r#"if (location.origin === {origin_json}) {{
@@ -385,6 +386,7 @@ pub fn create(
         })
         .on_page_load(move |_, payload| {
             if matches!(payload.event(), tauri::webview::PageLoadEvent::Started) {
+                crate::voice::stop(&load_app, Some(&load_label));
                 load_app
                     .state::<WorkspaceState>()
                     .invalidate_window(&load_label);
@@ -419,6 +421,7 @@ pub fn window_event(window: &tauri::Window, event: &tauri::WindowEvent) {
         tauri::WindowEvent::CloseRequested { api, .. }
             if !state.quitting.load(Ordering::SeqCst) =>
         {
+            crate::voice::stop(app, Some(window.label()));
             if window.label() == "main" {
                 save(app, None);
                 if cfg!(target_os = "macos") || app.webview_windows().len() > 1 {
@@ -437,12 +440,14 @@ pub fn window_event(window: &tauri::Window, event: &tauri::WindowEvent) {
             }
         }
         tauri::WindowEvent::Destroyed => {
+            crate::voice::stop(app, Some(window.label()));
             state.invalidate_window(window.label());
             if !state.quitting.load(Ordering::SeqCst) {
                 save(app, Some(window.label()));
             }
         }
         tauri::WindowEvent::Focused(false) if !state.quitting.load(Ordering::SeqCst) => {
+            crate::voice::stop(app, Some(window.label()));
             save(app, None)
         }
         _ => {}

@@ -41,6 +41,8 @@
             "allow-desktop-auth-unlock",
             "allow-desktop-workspace-ready",
             "allow-desktop-save-pdf",
+            "allow-desktop-voice-start",
+            "allow-desktop-voice-control",
             "core:event:allow-listen",
             "core:event:allow-unlisten"
           ]

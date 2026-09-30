@@ -1,10 +1,12 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Cognuum",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "identifier": "com.cognuum.desktop",
   "build": {
-    "frontendDist": "../fallback"
+    "frontendDist": "../fallback",
+    "beforeBuildCommand": "node scripts/voice-model.mjs",
+    "beforeDevCommand": "node scripts/voice-model.mjs"
   },
   "app": {
     "withGlobalTauri": false,
@@ -34,6 +36,8 @@
             "allow-desktop-auth-unlock",
             "allow-desktop-workspace-ready",
             "allow-desktop-save-pdf",
+            "allow-desktop-voice-start",
+            "allow-desktop-voice-control",
             "core:event:allow-listen",
             "core:event:allow-unlisten"
           ]
@@ -60,7 +64,8 @@
     ],
     "macOS": {
       "minimumSystemVersion": "13.0",
-      "hardenedRuntime": true
+      "hardenedRuntime": true,
+      "entitlements": "Entitlements.plist"
     },
     "windows": {
       "webviewInstallMode": {
@@ -72,6 +77,9 @@
         "installerIcon": "icons/icon.ico",
         "uninstallerIcon": "icons/icon.ico"
       }
+    },
+    "resources": {
+      "voice-model/": "voice-model/"
     }
   },
   "plugins": {
