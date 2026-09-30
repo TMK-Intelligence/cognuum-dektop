@@ -92,12 +92,22 @@ before publishing a desktop build that advertises this protocol.
 
 ## Native security and behavior
 
+Generated intelligence PDFs use the platform's PDF renderer and a narrow native
+save command (`downloads.protocol: 1`). Files go to the OS **Downloads** folder;
+existing names receive a numbered suffix. The platform waits for the completed
+write before reporting success. Failed writes report an error without retrying.
+The command accepts only PDF bytes (64 MiB maximum) with a safe `.pdf` basename,
+and cannot read files, accept a directory, fetch a URL or overwrite existing files.
+Deploy the companion platform PDF adapter and install a build with this protocol
+to enable it. Older installers continue using their browser download behavior.
+
 - Only the exact channel origin can navigate inside the main webview. Other HTTPS
   pages open in the system browser. File/javascript/other custom schemes are denied.
-- Only the exact channel origin in `main` / `workspace-*` receives five narrow
+- Only the exact channel origin in `main` / `workspace-*` receives six narrow
   commands for in-memory session read/write, authentication locking and workspace
-  readiness, plus auth-event subscription. Native menus own window creation and
-  updates. No remote shell, filesystem or general window-management capability exists.
+  readiness and PDF saving, plus auth-event subscription. Native menus own window
+  creation and updates. No remote shell, general filesystem or window-management
+  capability exists.
 - All windows share one session in native process memory. Per-window sessionStorage
   mirrors remain; tokens never enter workspace files or localStorage. A native lock
   serializes Supabase refresh operations and releases abandoned leases on document

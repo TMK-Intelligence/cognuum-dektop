@@ -33,6 +33,7 @@
             "allow-desktop-auth-lock",
             "allow-desktop-auth-unlock",
             "allow-desktop-workspace-ready",
+            "allow-desktop-save-pdf",
             "core:event:allow-listen",
             "core:event:allow-unlisten"
           ]

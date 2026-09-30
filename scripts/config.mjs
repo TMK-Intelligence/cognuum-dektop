@@ -10,7 +10,7 @@ export function validateConfig(config, channel = 'production') {
   const expectedCapability = {
     identifier: 'desktop-workspace', local: false, windows: ['main', 'workspace-*'], platforms: ['macOS', 'windows'],
     remote: { urls: [`${expected[0]}/*`] },
-    permissions: ['allow-desktop-auth-read', 'allow-desktop-auth-write', 'allow-desktop-auth-lock', 'allow-desktop-auth-unlock', 'allow-desktop-workspace-ready', 'core:event:allow-listen', 'core:event:allow-unlisten'],
+    permissions: ['allow-desktop-auth-read', 'allow-desktop-auth-write', 'allow-desktop-auth-lock', 'allow-desktop-auth-unlock', 'allow-desktop-workspace-ready', 'allow-desktop-save-pdf', 'core:event:allow-listen', 'core:event:allow-unlisten'],
   };
   if (JSON.stringify(config.app.security.capabilities) !== JSON.stringify([expectedCapability])) throw new Error('Only the channel-bound workspace bridge is permitted');
   if (config.app.windows.length !== 0) throw new Error('Windows must use the guarded native builder');

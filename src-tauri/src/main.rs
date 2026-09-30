@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod desktop;
+mod downloads;
 mod policy;
 mod workspace;
 use std::sync::atomic::Ordering;
@@ -111,7 +112,8 @@ fn main() {
             desktop::desktop_auth_write,
             desktop::desktop_auth_lock,
             desktop::desktop_auth_unlock,
-            desktop::desktop_workspace_ready
+            desktop::desktop_workspace_ready,
+            downloads::desktop_save_pdf
         ])
         .on_window_event(desktop::window_event)
         .setup(|app| {

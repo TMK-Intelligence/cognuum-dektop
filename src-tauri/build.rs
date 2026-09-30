@@ -6,6 +6,7 @@ fn main() {
             "desktop_auth_lock",
             "desktop_auth_unlock",
             "desktop_workspace_ready",
+            "desktop_save_pdf",
         ]),
     ))
     .expect("Could not build the desktop permission manifest");
