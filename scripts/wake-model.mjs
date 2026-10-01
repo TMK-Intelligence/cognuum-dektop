@@ -5,10 +5,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
-const name = 'sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01';
-const checksum = 'f170013b4716e41b62b9bfd809687c207cef798ef9bc6534d524e17af9b6561a';
+const name = 'sherpa-onnx-kws-zipformer-zh-en-3M-2025-12-20';
+const checksum = '68447f4fbc67e70eee3a93961f36e81e98f47aef73ce7e7ca00885c6cd3616a6';
 const root = fileURLToPath(new URL('../src-tauri/wake-model/', import.meta.url));
-const files = ["encoder-epoch-12-avg-2-chunk-16-left-64.int8.onnx", "decoder-epoch-12-avg-2-chunk-16-left-64.onnx", "joiner-epoch-12-avg-2-chunk-16-left-64.int8.onnx", "tokens.txt", "README.md"];
+const files = ["encoder-epoch-13-avg-2-chunk-8-left-64.int8.onnx", "decoder-epoch-13-avg-2-chunk-8-left-64.onnx", "joiner-epoch-13-avg-2-chunk-8-left-64.int8.onnx", "tokens.txt", "encoder-epoch-13-avg-2-chunk-16-left-64.onnx", "decoder-epoch-13-avg-2-chunk-16-left-64.onnx", "joiner-epoch-13-avg-2-chunk-16-left-64.onnx"];
 const digest = bytes => createHash('sha256').update(bytes).digest('hex');
 const manifest = JSON.parse(await readFile(new URL('./wake-model-hashes.json', import.meta.url)));
 async function valid() {
@@ -34,4 +34,5 @@ if (!await valid()) {
   } finally { await rm(tmp, { recursive: true, force: true }); }
 }
 await cp(new URL('../assets/VOICE-LICENSE.txt', import.meta.url), join(root, 'LICENSE.txt'));
-console.log('Local Max wake model verified.');
+await cp(new URL('../assets/WAKE-MODEL.md', import.meta.url), join(root, 'README.md'));
+console.log('Local Max phonetic wake model verified.');

@@ -292,14 +292,12 @@ fn microphone(
         }
     };
     macro_rules! build {
-        ($type:ty, $convert:expr) => {
+        ($type:ty, $convert:expr) => {{
+            let mut input = crate::voice_audio::InputChannel::default();
             device.build_input_stream(
                 &config,
                 move |data: &[$type], _| {
-                    let mono = data
-                        .chunks(channels)
-                        .map(|frame| frame.iter().map($convert).sum::<f32>() / channels as f32)
-                        .collect();
+                    let mono = input.mono(data, channels, $convert);
                     // Bound memory and reject dropped audio rather than run a corrupt command.
                     if tx.try_send(mono).is_err() {
                         failed.store(true, Ordering::SeqCst);
@@ -308,7 +306,7 @@ fn microphone(
                 on_error,
                 None,
             )
-        };
+        }};
     }
     let stream = match supported.sample_format() {
         cpal::SampleFormat::F32 => build!(f32, |s: &f32| *s),
@@ -358,12 +356,11 @@ fn run(
         cloud,
         wake_path,
     } = options;
-    let detector = if wake && cloud {
-        Some(crate::voice_wake::detector(wake_path, short_wake)?)
+    let mut detector = if wake && cloud {
+        Some(crate::voice_wake::WakeDetector::new(wake_path, short_wake)?)
     } else {
         None
     };
-    let mut wake_stream = detector.as_ref().map(crate::voice_wake::stream);
     let mut stream = new_stream(recognizer);
     let (tx, rx) = mpsc::sync_channel(32);
     let failed = Arc::new(AtomicBool::new(false));
@@ -399,7 +396,9 @@ fn run(
             }
             while rx.try_recv().is_ok() {}
             stream = new_stream(recognizer);
-            wake_stream = detector.as_ref().map(crate::voice_wake::stream);
+            if let Some(detector) = &mut detector {
+                detector.reset();
+            }
             resampler = None;
             buffered.clear();
             sent = false;
@@ -435,7 +434,9 @@ fn run(
             outgoing.clear();
             resampler = None;
             stream = new_stream(recognizer);
-            wake_stream = detector.as_ref().map(crate::voice_wake::stream);
+            if let Some(detector) = &mut detector {
+                detector.reset();
+            }
             while rx.try_recv().is_ok() {}
             if !wake {
                 mic = None;
@@ -474,17 +475,8 @@ fn run(
                     last_meter = Instant::now();
                 }
                 stream.accept_waveform(*rate, &samples);
-                if let (Some(kws), Some(kw_stream)) = (&detector, &wake_stream) {
-                    kw_stream.accept_waveform(*rate, &samples);
-                    while kws.is_ready(kw_stream) {
-                        kws.decode(kw_stream);
-                        if kws
-                            .get_result(kw_stream)
-                            .is_some_and(|r| !r.keyword.is_empty())
-                        {
-                            detected = true;
-                        }
-                    }
+                if let Some(detector) = &mut detector {
+                    detected |= detector.accept(*rate, &samples);
                 }
                 if cloud {
                     if resampler.is_none() {
@@ -593,9 +585,6 @@ fn run(
             }
             held = false;
             stream = new_stream(recognizer);
-            wake_stream = detector.as_ref().map(crate::voice_wake::stream);
-            buffered.clear();
-            resampler = None;
             last_partial.clear();
             segment_started = Instant::now();
             if !wake {
@@ -608,9 +597,6 @@ fn run(
             && segment_started.elapsed() > Duration::from_secs(20)
         {
             stream = new_stream(recognizer);
-            wake_stream = detector.as_ref().map(crate::voice_wake::stream);
-            buffered.clear();
-            resampler = None;
             segment_started = Instant::now();
         }
     }

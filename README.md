@@ -112,7 +112,7 @@ chart's browser-only microphone is hidden. Ordinary browsers are unaffected.
   sign-out and closing a window revoke the utterance. Only final transcripts run.
 
 The `streaming: 1` capability uses local English wake detection (pinned sherpa-onnx
-1.13.8, Zipformer ASR plus the 3.3M keyword detector). Build scripts verify both
+1.13.8, Zipformer ASR plus two phonetic 3M wake models). Build scripts verify both
 model archives and individual files; both ship their Apache-2.0 license. Older
 web adapters keep local recognition until the matching web release is deployed.
 
@@ -274,3 +274,12 @@ assets before publishing; never mark this preview as the latest stable release.
 These builds have no verified publisher signature or automatic updates, and
 operating systems may block them. The signed release workflow remains separate
 and still requires all signing credentials.
+
+Wake recognition uses independent, overlapping local streams: ordinary ASR
+endpoints cannot cut off the wake phrase. One lane also refreshes after quiet
+on a new speech onset; the other keeps listening through soft speech or noise. The fast int8 decoder and the fp32
+decoder use different acoustic chunk sizes; either can activate capture, but
+only the confirmed anchored transcript can execute a request. Microphone input
+selects the strongest channel with hysteresis to avoid stereo phase cancellation.
+No idle audio is uploaded. Synthetic streaming tests cover repeated, quiet wake
+phrases; actual AirPods, accents and office noise still require device testing.
