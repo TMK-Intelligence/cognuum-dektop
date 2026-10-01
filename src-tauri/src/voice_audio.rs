@@ -45,9 +45,71 @@ impl InputGain {
     }
 }
 
+/// Some headsets/interfaces expose duplicate, silent or opposite-polarity
+/// channels. Averaging them can attenuate speech or cancel it completely.
+/// Keep the strongest channel with hysteresis instead of summing microphones.
+#[derive(Default)]
+pub struct InputChannel {
+    selected: usize,
+}
+impl InputChannel {
+    pub fn mono<T>(
+        &mut self,
+        data: &[T],
+        channels: usize,
+        convert: impl Fn(&T) -> f32,
+    ) -> Vec<f32> {
+        if channels == 0 {
+            return Vec::new();
+        }
+        let mut power = vec![0.0f64; channels];
+        for frame in data.chunks_exact(channels) {
+            for (index, sample) in frame.iter().enumerate() {
+                let value = convert(sample);
+                if value.is_finite() {
+                    power[index] += (value as f64).powi(2);
+                }
+            }
+        }
+        if self.selected >= channels {
+            self.selected = 0;
+        }
+        let best = (0..channels)
+            .max_by(|a, b| power[*a].total_cmp(&power[*b]))
+            .unwrap_or(0);
+        if power[best] > power[self.selected] * 2.0 {
+            self.selected = best;
+        }
+        data.chunks_exact(channels)
+            .map(|frame| {
+                let value = convert(&frame[self.selected]);
+                if value.is_finite() {
+                    value
+                } else {
+                    0.0
+                }
+            })
+            .collect()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn headset_channels_preserve_quiet_speech_and_never_phase_cancel() {
+        let mut input = InputChannel::default();
+        assert_eq!(
+            input.mono(&[0.02, -0.02, 0.04, -0.04], 2, |v| *v),
+            [0.02, 0.04]
+        );
+        assert_eq!(input.mono(&[0.0, 0.01, 0.0, 0.03], 2, |v| *v), [0.01, 0.03]);
+        assert_eq!(
+            input.mono(&[0.01, 0.011, 0.02, 0.021], 2, |v| *v),
+            [0.011, 0.021]
+        );
+        assert_eq!(input.mono(&[f32::NAN, 0.01], 1, |v| *v), [0.0, 0.01]);
+    }
     #[test]
     fn quiet_input_is_lifted_but_silence_and_invalid_samples_stay_silent() {
         let mut gain = InputGain::default();
