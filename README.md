@@ -103,29 +103,37 @@ Native windows use the **Max** control for chart dictation as well as navigation
 The unsupported browser speech API is not exposed in the desktop webview, so the
 chart's browser-only microphone is hidden. Ordinary browsers are unaffected.
 
-- Say **“Hey Max, open Analysis”** or **“Listen, load Apple”** in one breath.
-  “Listen” can be disabled separately. Wake activation operates only while a
+- Say **“Hey Max, open Analysis”** or **“Max, load Apple”** in one breath.
+  The short “Max” trigger can be disabled separately. Wake activation operates only while a
   Cognuum window is focused. A wake-only phrase leaves five seconds for a request.
 - Hold **Ctrl+Shift+Space**, speak, then release. The chord is configurable on
   macOS and Windows. Turn off wake activation for shortcut-only microphone use.
 - Escape cancels. Blur, page navigation, chart switches, account changes,
   sign-out and closing a window revoke the utterance. Only final transcripts run.
 
-Speech runs **locally in English**, using the pinned Apache-2.0 sherpa-onnx 1.13.8
-streaming Zipformer model (`en-2023-06-26`, int8). The model adds approximately
-68 MiB of resources. `voice-model.mjs` checks the archive SHA-256 and each extracted
-file; the vocabulary in `assets/voice-bpe.vocab` is exported from that archive's
-`bpe.model` (500 pieces with their scores). A small phrase bias helps the recognizer
-spell “Hey Max”; it does not permit non-anchored activations. Attribution and the
-Apache license ship with the model. Build-time native libraries come from the
-pinned sherpa-onnx crate's official release downloader.
+The `streaming: 1` capability uses local English wake detection (pinned sherpa-onnx
+1.13.8, Zipformer ASR plus the 3.3M keyword detector). Build scripts verify both
+model archives and individual files; both ship their Apache-2.0 license. Older
+web adapters keep local recognition until the matching web release is deployed.
 
-After first enable, the model stays warm in memory until exit. Capture is
-serialized across windows. Audio is bounded, discarded after recognition, never
-logged, stored or sent to a cloud service. No transcription API key or per-minute
-voice fee is introduced. Local navigation uses an exact destination allowlist;
-chart requests reuse the existing omnibox fast path, AI entitlement/usage checks,
-ambiguity handling and undo. Complex chart requests retain their existing AI cost.
+After explicit cloud-transcription consent, activated requests stream as 24 kHz
+mono PCM16 through the authenticated Cognuum Railway relay to OpenAI
+`gpt-live-transcribe` (`delay: low`). Up to two seconds of local pre-roll preserve
+the activation phrase and initial syllables. No idle audio is transmitted. A wake
+hypothesis may light the UI, but only an anchored, confirmed cloud transcript
+can execute. The relay admits verified member JWTs with `desktop_app` access,
+requires a configured price row, limits requests to 20 seconds / 30 per minute /
+1000 per day, and sends no arbitrary model or tool configuration. One provider
+attempt per request. No audio or transcription is saved by Cognuum; OpenAI API
+data controls apply. Usage records contain duration and cost only.
+
+One window owns Max until the user explicitly enables it in another. Losing
+focus pauses capture and cancels cloud work; refocusing the owner resumes.
+Changing windows does not silently transfer commands. Input conditioning adds
+bounded gain for quiet microphones; the meter shows the raw system input level
+and its device name. Local navigation uses the existing destination allowlist;
+chart requests reuse the omnibox, entitlement checks, ambiguity handling and undo.
+Complex chart requests retain their existing AI cost.
 Preferences persist, microphone consent does not persist across a page reload or
 app restart. OS microphone permission is still required.
 

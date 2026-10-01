@@ -1,5 +1,6 @@
-//! Native microphone + local streaming ASR. No network/audio persistence.
+//! Native capture and local wake detection. Activated PCM is sent to the hosted UI; never persisted.
 use crate::{desktop, voice_protocol, workspace::WorkspaceState};
+use base64::Engine;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use serde::Serialize;
 use sherpa_onnx::{OnlineRecognizer, OnlineRecognizerConfig};
@@ -18,10 +19,12 @@ const IDLE: u8 = 0;
 const HOLD: u8 = 1;
 const RELEASE: u8 = 2;
 const CANCEL: u8 = 3;
+const FOLLOWUP: u8 = 4;
 
 #[derive(Default)]
 pub struct VoiceState {
     next: AtomicU64,
+    owner: Mutex<Option<String>>,
     session: Mutex<Option<Session>>,
     // Keep the model warm after opt-in. Holding this lock serializes capture
     // across windows; microphone/audio buffers are never kept in this cache.
@@ -36,10 +39,26 @@ struct Session {
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct Event {
+    #[serde(flatten)]
+    detail: Option<Detail>,
     session: u64,
     sequence: u64,
     phase: &'static str,
     text: String,
+}
+
+#[derive(Clone, Serialize)]
+struct InputSignal {
+    level: f32,
+    device: String,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(untagged)]
+enum Detail {
+    Input { input: InputSignal },
+    Audio { audio: String },
+    Activation { activation: &'static str },
 }
 
 pub fn stop(app: &tauri::AppHandle, label: Option<&str>) {
@@ -74,6 +93,8 @@ pub fn desktop_voice_start(
     window: WebviewWindow,
     wake: bool,
     listen_word: bool,
+    streaming: Option<bool>,
+    take_ownership: Option<bool>,
 ) -> Result<u64, String> {
     desktop::verify(&window)?;
     if !window.is_focused().unwrap_or(false) {
@@ -92,8 +113,24 @@ pub fn desktop_voice_start(
         .path()
         .resource_dir()
         .map_err(|_| "Voice resources unavailable.")?;
-    stop(window.app_handle(), None);
     let state = window.state::<VoiceState>();
+    let mut voice_owner = state.owner.lock().map_err(|_| "Voice unavailable.")?;
+    {
+        let owner = &mut voice_owner;
+        if owner
+            .as_deref()
+            .is_some_and(|label| label != window.label())
+            && !take_ownership.unwrap_or(false)
+        {
+            return Err("Max belongs to another window. Enable Max here to move it.".into());
+        }
+        **owner = Some(window.label().into());
+    }
+    // One owner for all windows; notify the old UI even when it is unfocused.
+    let _ = window
+        .app_handle()
+        .emit("cognuum-voice-owner", window.label());
+    stop(window.app_handle(), None);
     let id = state.next.fetch_add(1, Ordering::SeqCst) + 1;
     let model = state.recognizer.clone();
     let stop_signal = Arc::new(AtomicBool::new(false));
@@ -104,9 +141,10 @@ pub fn desktop_voice_start(
         stop: stop_signal.clone(),
         action: action.clone(),
     });
+    drop(voice_owner);
     std::thread::spawn(move || {
         let mut sequence = 0;
-        let mut emit = |phase, text: String| {
+        let mut emit = |phase, text: String, detail: Option<Detail>| {
             // A result can never cross a reload, account switch or focus change.
             if !stop_signal.load(Ordering::SeqCst) && eligible(&window, generation, &owner) {
                 sequence += 1;
@@ -115,6 +153,7 @@ pub fn desktop_voice_start(
                     Event {
                         session: id,
                         sequence,
+                        detail,
                         phase,
                         text,
                     },
@@ -131,8 +170,12 @@ pub fn desktop_voice_start(
             }
             run(
                 model.as_ref().unwrap(),
-                wake,
-                listen_word,
+                RunOptions {
+                    wake,
+                    short_wake: listen_word,
+                    cloud: streaming.unwrap_or(false),
+                    wake_path: &resources.join("wake-model"),
+                },
                 &stop_signal,
                 &action,
                 || eligible(&window, generation, &owner),
@@ -140,7 +183,7 @@ pub fn desktop_voice_start(
             )
         })();
         if let Err(error) = result {
-            emit("error", error);
+            emit("error", error, None);
         }
     });
     Ok(id)
@@ -171,6 +214,7 @@ pub fn desktop_voice_control(
         "hold" => HOLD,
         "release" => RELEASE,
         "cancel" => CANCEL,
+        "followup" => FOLLOWUP,
         _ => return Err("Unknown voice action.".into()),
     };
     let state = window.state::<VoiceState>();
@@ -193,6 +237,11 @@ pub fn desktop_voice_control(
 }
 
 pub fn recognizer(path: &Path) -> Result<OnlineRecognizer, String> {
+    OnlineRecognizer::create(&recognizer_config(path)?)
+        .ok_or("Could not load local speech recognition.".into())
+}
+
+fn recognizer_config(path: &Path) -> Result<OnlineRecognizerConfig, String> {
     let file = |name: &str| -> Result<String, String> {
         let path = path.join(name);
         if !path.is_file() {
@@ -218,18 +267,19 @@ pub fn recognizer(path: &Path) -> Result<OnlineRecognizer, String> {
     config.hotwords_score = 4.0;
     config.enable_endpoint = true;
     config.rule1_min_trailing_silence = 2.4;
-    config.rule2_min_trailing_silence = 0.65;
+    config.rule2_min_trailing_silence = 0.35;
     config.rule3_min_utterance_length = 20.0;
-    OnlineRecognizer::create(&config).ok_or("Could not load local speech recognition.".into())
+    Ok(config)
 }
 
 fn microphone(
     tx: mpsc::SyncSender<Vec<f32>>,
     failed: Arc<AtomicBool>,
-) -> Result<(cpal::Stream, i32), String> {
+) -> Result<(cpal::Stream, i32, String), String> {
     let device = cpal::default_host()
         .default_input_device()
         .ok_or("No microphone found. Connect one and try again.")?;
+    let name = device.name().unwrap_or_else(|_| "System microphone".into());
     let supported = device
         .default_input_config()
         .map_err(|_| "Allow microphone access to Cognuum in system settings.")?;
@@ -274,7 +324,7 @@ fn microphone(
     stream
         .play()
         .map_err(|_| "Could not start the microphone. Check system microphone access.")?;
-    Ok((stream, config.sample_rate.0 as i32))
+    Ok((stream, config.sample_rate.0 as i32, name))
 }
 
 fn new_stream(recognizer: &OnlineRecognizer) -> sherpa_onnx::OnlineStream {
@@ -288,15 +338,32 @@ fn new_stream(recognizer: &OnlineRecognizer) -> sherpa_onnx::OnlineStream {
     stream
 }
 
+struct RunOptions<'a> {
+    wake: bool,
+    short_wake: bool,
+    cloud: bool,
+    wake_path: &'a Path,
+}
 fn run(
     recognizer: &OnlineRecognizer,
-    wake: bool,
-    listen: bool,
+    options: RunOptions<'_>,
     stop: &AtomicBool,
     action: &AtomicU8,
     eligible: impl Fn() -> bool,
-    emit: &mut impl FnMut(&'static str, String),
+    emit: &mut impl FnMut(&'static str, String, Option<Detail>),
 ) -> Result<(), String> {
+    let RunOptions {
+        wake,
+        short_wake,
+        cloud,
+        wake_path,
+    } = options;
+    let detector = if wake && cloud {
+        Some(crate::voice_wake::detector(wake_path, short_wake)?)
+    } else {
+        None
+    };
+    let mut wake_stream = detector.as_ref().map(crate::voice_wake::stream);
     let mut stream = new_stream(recognizer);
     let (tx, rx) = mpsc::sync_channel(32);
     let failed = Arc::new(AtomicBool::new(false));
@@ -306,6 +373,13 @@ fn run(
     let mut started: Option<Instant> = None;
     let mut last_partial = String::new();
     let mut segment_started = Instant::now();
+    let mut gain = crate::voice_audio::InputGain::default();
+    let mut last_meter = Instant::now();
+    let mut resampler = None;
+    let mut buffered = Vec::<f32>::new();
+    let mut sent = false;
+    let mut cloud_samples = 0;
+    let mut outgoing = Vec::<f32>::new();
     let ready = if wake { "armed" } else { "ready" };
     if stop.load(Ordering::SeqCst) || !eligible() {
         return Ok(());
@@ -313,23 +387,39 @@ fn run(
     if wake {
         mic = Some(microphone(tx.clone(), failed.clone())?);
     }
-    emit(ready, String::new());
+    emit(ready, String::new(), None);
     loop {
         if stop.load(Ordering::SeqCst) || !eligible() {
             break;
         }
         let next = action.swap(IDLE, Ordering::SeqCst);
-        if next == HOLD {
+        if next == HOLD || next == FOLLOWUP {
             if mic.is_none() {
                 mic = Some(microphone(tx.clone(), failed.clone())?);
             }
             while rx.try_recv().is_ok() {}
             stream = new_stream(recognizer);
-            held = true;
-            waiting = None;
+            wake_stream = detector.as_ref().map(crate::voice_wake::stream);
+            resampler = None;
+            buffered.clear();
+            sent = false;
+            cloud_samples = 0;
+            outgoing.clear();
+            held = next == HOLD;
+            waiting = if next == FOLLOWUP {
+                Some(Instant::now())
+            } else {
+                None
+            };
             started = Some(Instant::now());
             last_partial.clear();
-            emit("listening", String::new());
+            emit(
+                "listening",
+                String::new(),
+                Some(Detail::Activation {
+                    activation: if next == FOLLOWUP { "followup" } else { "hold" },
+                }),
+            );
         }
         if next == CANCEL
             || started.is_some_and(|t| t.elapsed() > Duration::from_secs(20))
@@ -339,32 +429,96 @@ fn run(
             waiting = None;
             started = None;
             last_partial.clear();
+            buffered.clear();
+            sent = false;
+            cloud_samples = 0;
+            outgoing.clear();
+            resampler = None;
             stream = new_stream(recognizer);
+            wake_stream = detector.as_ref().map(crate::voice_wake::stream);
             while rx.try_recv().is_ok() {}
             if !wake {
                 mic = None;
             }
-            emit(ready, String::new());
+            emit("cancelled", String::new(), None);
+            emit(ready, String::new(), None);
         }
         if failed.load(Ordering::SeqCst) {
             return Err(
                 "Microphone interrupted. Check your input device, then enable Max again.".into(),
             );
         }
-        if let Some((_, rate)) = mic.as_ref() {
-            if let Ok(samples) = rx.recv_timeout(Duration::from_millis(20)) {
+        let mut detected = false;
+        if let Some((_, rate, device)) = mic.as_ref() {
+            let mut received = rx
+                .recv_timeout(Duration::from_millis(20))
+                .ok()
+                .into_iter()
+                .collect::<Vec<_>>();
+            if next == RELEASE && held {
+                received.extend(rx.try_iter());
+            }
+            for mut samples in received {
+                let level = gain.process(&mut samples, *rate);
+                if last_meter.elapsed() >= Duration::from_millis(250) {
+                    emit(
+                        "level",
+                        String::new(),
+                        Some(Detail::Input {
+                            input: InputSignal {
+                                level,
+                                device: device.clone(),
+                            },
+                        }),
+                    );
+                    last_meter = Instant::now();
+                }
                 stream.accept_waveform(*rate, &samples);
+                if let (Some(kws), Some(kw_stream)) = (&detector, &wake_stream) {
+                    kw_stream.accept_waveform(*rate, &samples);
+                    while kws.is_ready(kw_stream) {
+                        kws.decode(kw_stream);
+                        if kws
+                            .get_result(kw_stream)
+                            .is_some_and(|r| !r.keyword.is_empty())
+                        {
+                            detected = true;
+                        }
+                    }
+                }
+                if cloud {
+                    if resampler.is_none() {
+                        resampler = sherpa_onnx::LinearResampler::create(*rate, 24000);
+                    }
+                    let converted = resampler
+                        .as_ref()
+                        .ok_or("Could not prepare microphone audio.")?
+                        .resample(&samples, false);
+                    if sent {
+                        cloud_samples += converted.len();
+                        if cloud_samples > 24000 * 20 {
+                            return Err(
+                                "Voice request is too long. Please try a shorter request.".into()
+                            );
+                        }
+                        outgoing.extend(converted);
+                        while outgoing.len() >= 2400 {
+                            emit_pcm(&outgoing[..2400], emit);
+                            outgoing.drain(..2400);
+                        }
+                    } else {
+                        buffered.extend(converted);
+                        // At most 2 seconds of local pre-roll; no idle audio leaves the process.
+                        if buffered.len() > 48000 {
+                            buffered.drain(..buffered.len() - 48000);
+                        }
+                    }
+                }
             }
         } else {
             std::thread::sleep(Duration::from_millis(20));
         }
         if next == RELEASE && held {
-            // Flush model look-ahead without an extra silence/VAD wait on key-up.
-            if let Some((_, rate)) = mic.as_ref() {
-                while let Ok(samples) = rx.try_recv() {
-                    stream.accept_waveform(*rate, &samples);
-                }
-            }
             stream.accept_waveform(16000, &[0.0; 16000]);
             stream.input_finished();
         }
@@ -375,59 +529,110 @@ fn run(
             .get_result(&stream)
             .map(|r| r.text)
             .unwrap_or_default();
-        let spoken = if held || waiting.is_some() {
+        if waiting.is_some() && !text.trim().is_empty() {
+            waiting = None;
+        }
+        let spoken = if held || waiting.is_some() || (cloud && sent) {
             Some(text.clone())
         } else {
-            voice_protocol::after_wake(&text, listen)
+            voice_protocol::after_wake(&text, short_wake)
         };
-        if let Some(ref spoken) = spoken {
+        if spoken.is_some() || (cloud && detected && wake && started.is_none()) {
             if started.is_none() {
                 started = Some(Instant::now());
-                emit("listening", String::new());
+                emit(
+                    "listening",
+                    String::new(),
+                    Some(Detail::Activation { activation: "wake" }),
+                );
             }
-            if spoken != &last_partial {
-                emit("partial", spoken.clone());
-                last_partial = spoken.clone();
+            if cloud && !sent {
+                sent = true;
+                cloud_samples = buffered.len();
+                emit_pcm(&buffered, emit);
+                buffered.clear();
+            }
+            if !cloud {
+                if let Some(ref spoken) = spoken {
+                    if spoken != &last_partial {
+                        emit("partial", spoken.clone(), None);
+                        last_partial = spoken.clone();
+                    }
+                }
             }
         }
         if (next == RELEASE && held) || (!held && recognizer.is_endpoint(&stream)) {
-            if let Some(spoken) = spoken {
-                if !held && spoken.is_empty() {
-                    if waiting.is_none() {
-                        waiting = Some(Instant::now());
+            if cloud && sent {
+                emit_pcm(&outgoing, emit);
+                outgoing.clear();
+                emit("commit", String::new(), None);
+                sent = false;
+                cloud_samples = 0;
+                outgoing.clear();
+                waiting = None;
+                started = None;
+                emit(ready, String::new(), None);
+            } else if !cloud {
+                if let Some(spoken) = spoken {
+                    if !held && spoken.is_empty() {
+                        if waiting.is_none() {
+                            waiting = Some(Instant::now());
+                        }
+                    } else {
+                        if let Some(command) = voice_protocol::command(&spoken) {
+                            emit("final", command, None);
+                        }
+                        waiting = None;
+                        started = None;
+                        emit(ready, String::new(), None);
                     }
                 } else {
-                    if let Some(command) = voice_protocol::command(&spoken) {
-                        emit("final", command);
-                    }
-                    waiting = None;
                     started = None;
-                    emit(ready, String::new());
+                    emit(ready, String::new(), None);
                 }
-            } else {
-                started = None;
-                emit(ready, String::new());
             }
             held = false;
             stream = new_stream(recognizer);
+            wake_stream = detector.as_ref().map(crate::voice_wake::stream);
+            buffered.clear();
+            resampler = None;
             last_partial.clear();
             segment_started = Instant::now();
             if !wake {
                 mic = None;
             }
         }
-        // Bounded idle decoder history, including silence / background noise.
         if !held
             && waiting.is_none()
             && started.is_none()
             && segment_started.elapsed() > Duration::from_secs(20)
         {
             stream = new_stream(recognizer);
+            wake_stream = detector.as_ref().map(crate::voice_wake::stream);
+            buffered.clear();
+            resampler = None;
             segment_started = Instant::now();
         }
     }
-    // Dropping cpal::Stream closes the microphone; audio queues die here.
     Ok(())
+}
+
+fn emit_pcm(samples: &[f32], emit: &mut impl FnMut(&'static str, String, Option<Detail>)) {
+    for chunk in samples.chunks(2400) {
+        let bytes: Vec<u8> = chunk
+            .iter()
+            .flat_map(|v| ((*v * 32767.0).clamp(-32768.0, 32767.0) as i16).to_le_bytes())
+            .collect();
+        if !bytes.is_empty() {
+            emit(
+                "audio",
+                String::new(),
+                Some(Detail::Audio {
+                    audio: base64::engine::general_purpose::STANDARD.encode(bytes),
+                }),
+            );
+        }
+    }
 }
 
 #[cfg(test)]
@@ -437,11 +642,14 @@ mod tests {
     fn speech_regressions_preserve_wake_commands_and_short_hold_utterances() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR"));
         let recognizer = recognizer(&root.join("voice-model")).unwrap();
+        let mut failures = Vec::new();
         for (file, expected, wake) in [
             ("hey-max-us.wav", Some("show apple over five years"), true),
             ("hey-max-uk.wav", Some("open analysis"), true),
             ("hey-max-india.wav", Some("open settings"), true),
-            ("listen.wav", Some("load apple"), true),
+            ("listen.wav", None, true),
+            ("maximum.wav", None, true),
+            ("conversation.wav", None, true),
             ("hold.wav", Some("load apple"), false),
             ("no-wake.wav", None, true),
         ] {
@@ -467,8 +675,13 @@ mod tests {
             } else {
                 voice_protocol::command(&text)
             };
-            assert_eq!(command.as_deref(), expected, "{file}: {text}");
+            if command.as_deref() != expected {
+                failures.push(format!(
+                    "{file}: {text} -> {command:?}; expected {expected:?}"
+                ));
+            }
         }
+        assert!(failures.is_empty(), "{}", failures.join("\n"));
         let silence = new_stream(&recognizer);
         silence.accept_waveform(16000, &[0.0; 32000]);
         silence.input_finished();

@@ -4,7 +4,9 @@ mod desktop;
 mod downloads;
 mod policy;
 mod voice;
+mod voice_audio;
 mod voice_protocol;
+mod voice_wake;
 mod workspace;
 use std::sync::atomic::Ordering;
 use tauri::{
