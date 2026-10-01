@@ -79,7 +79,8 @@
       }
     },
     "resources": {
-      "voice-model/": "voice-model/"
+      "voice-model/": "voice-model/",
+      "wake-model/": "wake-model/"
     }
   },
   "plugins": {

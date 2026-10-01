@@ -12,3 +12,6 @@ release-artifacts/
 preview-config.json
 preview-artifacts/
 src-tauri/voice-model/
+
+src-tauri/wake-model/
+node_modules

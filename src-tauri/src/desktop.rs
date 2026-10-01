@@ -320,7 +320,7 @@ pub fn create(
     let env = app.state::<Environment>().inner().clone();
     let metadata = serde_json::json!({ "version":app.package_info().version.to_string(), "channel":env.channel, "scheme":env.scheme,
         "workspace": {"protocol":1,"windowLabel":label,"maxWindows":MAX_WINDOWS},
-        "downloads": {"protocol":1}, "voice": {"protocol":1,"language":"en"} });
+        "downloads": {"protocol":1}, "voice": {"protocol":1,"language":"en","commandPrefix":"max","inputMeter":true,"streaming":1,"singleWindow":true} });
     let origin_json = serde_json::to_string(&env.origin).expect("origin JSON");
     let script = format!(
         "{}({metadata}, {origin_json});",
