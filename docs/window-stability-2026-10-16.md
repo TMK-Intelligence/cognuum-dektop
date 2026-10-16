@@ -14,7 +14,7 @@ labels, so its worker-side window-ready callback cannot reintroduce the lock cyc
 `scripts/workspace-threading.test.mjs` checks that contract and rejects planted
 worker saves/restores using the same assertion helper.
 
-Verification: Node checks 11 passed; Rust tests 22 passed, 1 explicitly ignored
+Verification: Node checks 12 passed; Rust tests 22 passed, 1 explicitly ignored
 (the optional external speech fixture); formatting and Clippy with `-D warnings`
 passed; the Mac debug application bundle built. An isolated native diagnostic
 with a distinct bundle identifier and local fallback pages completed five cycles
@@ -37,3 +37,9 @@ backend access, or migration changed. Windows compilation/runtime, authenticated
 workspace recovery, MFA, sign-out, real multi-monitor restoration and a signed
 installer/update were not exercised. No Cognuum crash report was available locally;
 the lock-cycle repair does not establish the cause of every reported app exit.
+
+Release follow-up: Windows CI exposed a CRLF-only failure in the planted worker
+restore case. The mutation now tolerates either newline convention and asserts
+that it actually changed the source. Separate LF and CRLF cases reproduce the
+original test defect and pass with the corrected mutation. Runtime Rust code is
+unchanged by this follow-up.
