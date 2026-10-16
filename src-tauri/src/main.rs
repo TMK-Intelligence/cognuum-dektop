@@ -107,8 +107,18 @@ fn main() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(
-            tauri_plugin_window_state::Builder::default()
-                .with_state_flags(StateFlags::all() - StateFlags::VISIBLE)
+            (0..workspace::MAX_WINDOWS)
+                .fold(
+                    tauri_plugin_window_state::Builder::default()
+                        .with_state_flags(StateFlags::all() - StateFlags::VISIBLE),
+                    |builder, id| {
+                        builder.skip_initial_state(&if id == 0 {
+                            "main".into()
+                        } else {
+                            format!("workspace-{id}")
+                        })
+                    },
+                )
                 .build(),
         )
         .invoke_handler(tauri::generate_handler![

@@ -5,7 +5,7 @@ use std::{
 };
 use tauri::{Emitter, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 use tauri_plugin_opener::OpenerExt;
-use tauri_plugin_window_state::{AppHandleExt, StateFlags};
+use tauri_plugin_window_state::{AppHandleExt, StateFlags, WindowExt};
 use url::Url;
 
 pub(crate) fn verify(window: &WebviewWindow) -> Result<(), String> {
@@ -185,7 +185,21 @@ fn write_saved(app: &tauri::AppHandle) {
     }
 }
 
+/// Window-state getters and the plugin cache must share the event-loop thread.
+/// A worker holding the cache while waiting for a native getter can deadlock
+/// the focus/resize/close callback that is waiting for that same cache.
 pub fn save(app: &tauri::AppHandle, excluding: Option<&str>) {
+    let handle = app.clone();
+    let excluding = excluding.map(str::to_owned);
+    if app
+        .run_on_main_thread(move || save_on_main_thread(&handle, excluding.as_deref()))
+        .is_err()
+    {
+        eprintln!("Could not schedule desktop workspace save");
+    }
+}
+
+fn save_on_main_thread(app: &tauri::AppHandle, excluding: Option<&str>) {
     let state = app.state::<WorkspaceState>();
     if state.restoring.load(Ordering::SeqCst) {
         return;
@@ -343,7 +357,8 @@ pub fn create(
         })
         .inner_size(1440.0, 960.0)
         .min_inner_size(640.0, 480.0)
-        .focused(focused)
+        .visible(false)
+        .focused(false)
         .initialization_script(script)
         .on_navigation(move |url| {
             if policy::same_origin(url, &nav_origin)
@@ -395,6 +410,17 @@ pub fn create(
             }
         })
         .build()?;
+    // The plugin's automatic restore is disabled for workspace labels. Restore
+    // on the UI thread too, before showing, so cache locks never span a worker's
+    // synchronous round-trip to the event loop during a multi-window open.
+    let shown_window = window.clone();
+    app.run_on_main_thread(move || {
+        let _ = shown_window.restore_state(StateFlags::all() - StateFlags::VISIBLE);
+        let _ = shown_window.show();
+        if focused {
+            let _ = shown_window.set_focus();
+        }
+    })?;
     let timeout_window = window.clone();
     tauri::async_runtime::spawn(async move {
         tokio::time::sleep(std::time::Duration::from_secs(30)).await;
