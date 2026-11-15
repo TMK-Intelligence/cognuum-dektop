@@ -5,6 +5,7 @@ use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use serde::Serialize;
 use sherpa_onnx::{OnlineRecognizer, OnlineRecognizerConfig};
 use std::{
+    cell::Cell,
     path::Path,
     sync::{
         atomic::{AtomicBool, AtomicU64, AtomicU8, Ordering},
@@ -20,15 +21,28 @@ const HOLD: u8 = 1;
 const RELEASE: u8 = 2;
 const CANCEL: u8 = 3;
 const FOLLOWUP: u8 = 4;
+/// Window focus and URL are synchronous event-loop round trips. Blur, page
+/// loads, account changes and window close already stop a session through
+/// events, so the audio loop re-polls them as a bounded-staleness backstop
+/// instead of for every buffer (~100/s). Command-bearing phases always re-check.
+const NATIVE_RECHECK: Duration = Duration::from_millis(100);
 
 #[derive(Default)]
 pub struct VoiceState {
     next: AtomicU64,
     owner: Mutex<Option<String>>,
     session: Mutex<Option<Session>>,
-    // Keep the model warm after opt-in. Holding this lock serializes capture
+    // Keep the models warm after opt-in. Holding this lock serializes capture
     // across windows; microphone/audio buffers are never kept in this cache.
-    recognizer: Arc<Mutex<Option<OnlineRecognizer>>>,
+    models: Arc<Mutex<Models>>,
+}
+
+#[derive(Default)]
+struct Models {
+    recognizer: Option<OnlineRecognizer>,
+    /// Two keyword-spotting models, keyed by the short "Max" trigger setting.
+    /// Reloading them on every refocus/re-enable cost a visible start delay.
+    wake: Option<(bool, crate::voice_wake::WakeDetector)>,
 }
 struct Session {
     id: u64,
@@ -74,18 +88,40 @@ pub fn stop(app: &tauri::AppHandle, label: Option<&str>) {
     }
 }
 
-fn eligible(window: &WebviewWindow, generation: u64, owner: &str) -> bool {
-    desktop::verify(window).is_ok()
-        && window.is_focused().unwrap_or(false)
-        && window.state::<WorkspaceState>().generation(window.label()) == generation
-        && window
-            .state::<WorkspaceState>()
-            .auth
-            .lock()
-            .ok()
-            .and_then(|auth| auth.owner())
-            .as_deref()
-            == Some(owner)
+struct Eligibility {
+    window: WebviewWindow,
+    generation: u64,
+    owner: String,
+    confirmed: Cell<Option<Instant>>,
+}
+
+impl Eligibility {
+    /// In-process checks (generation, account) run every time; native window
+    /// checks run when `fresh` or when the last confirmation is stale.
+    fn check(&self, fresh: bool) -> bool {
+        let state = self.window.state::<WorkspaceState>();
+        if state.generation(self.window.label()) != self.generation
+            || !state
+                .auth
+                .lock()
+                .is_ok_and(|auth| auth.is_owner(&self.owner))
+        {
+            self.confirmed.set(None);
+            return false;
+        }
+        if !fresh
+            && self
+                .confirmed
+                .get()
+                .is_some_and(|at| at.elapsed() < NATIVE_RECHECK)
+        {
+            return true;
+        }
+        let native =
+            desktop::verify(&self.window).is_ok() && self.window.is_focused().unwrap_or(false);
+        self.confirmed.set(native.then(Instant::now));
+        native
+    }
 }
 
 #[tauri::command]
@@ -132,7 +168,7 @@ pub fn desktop_voice_start(
         .emit("cognuum-voice-owner", window.label());
     stop(window.app_handle(), None);
     let id = state.next.fetch_add(1, Ordering::SeqCst) + 1;
-    let model = state.recognizer.clone();
+    let models = state.models.clone();
     let stop_signal = Arc::new(AtomicBool::new(false));
     let action = Arc::new(AtomicU8::new(IDLE));
     *state.session.lock().map_err(|_| "Voice unavailable.")? = Some(Session {
@@ -143,12 +179,21 @@ pub fn desktop_voice_start(
     });
     drop(voice_owner);
     std::thread::spawn(move || {
+        let eligibility = Eligibility {
+            window,
+            generation,
+            owner,
+            confirmed: Cell::new(None),
+        };
         let mut sequence = 0;
         let mut emit = |phase, text: String, detail: Option<Detail>| {
             // A result can never cross a reload, account switch or focus change.
-            if !stop_signal.load(Ordering::SeqCst) && eligible(&window, generation, &owner) {
+            // Streamed audio/meter frames rely on the event-driven stop signal
+            // plus a bounded-staleness native check; every other phase re-checks.
+            let fresh = !matches!(phase, "audio" | "level");
+            if !stop_signal.load(Ordering::SeqCst) && eligibility.check(fresh) {
                 sequence += 1;
-                let _ = window.emit(
+                let _ = eligibility.window.emit(
                     EVENT,
                     Event {
                         session: id,
@@ -161,24 +206,48 @@ pub fn desktop_voice_start(
             }
         };
         let result = (|| {
-            let mut model = model.lock().map_err(|_| "Voice engine unavailable.")?;
-            if stop_signal.load(Ordering::SeqCst) || !eligible(&window, generation, &owner) {
+            let mut models = models.lock().map_err(|_| "Voice engine unavailable.")?;
+            if stop_signal.load(Ordering::SeqCst) || !eligibility.check(true) {
                 return Ok(());
             }
-            if model.is_none() {
-                *model = Some(recognizer(&resources.join("voice-model"))?);
+            let Models {
+                recognizer: cached_recognizer,
+                wake: cached_wake,
+            } = &mut *models;
+            if cached_recognizer.is_none() {
+                *cached_recognizer = Some(recognizer(&resources.join("voice-model"))?);
             }
+            let cloud = streaming.unwrap_or(false);
+            let detector = if wake && cloud {
+                match cached_wake {
+                    Some((short, detector)) if *short == listen_word => detector.reset(),
+                    _ => {
+                        // Release the old models before loading the other variant.
+                        *cached_wake = None;
+                        *cached_wake = Some((
+                            listen_word,
+                            crate::voice_wake::WakeDetector::new(
+                                &resources.join("wake-model"),
+                                listen_word,
+                            )?,
+                        ));
+                    }
+                }
+                cached_wake.as_mut().map(|(_, detector)| detector)
+            } else {
+                None
+            };
             run(
-                model.as_ref().unwrap(),
+                cached_recognizer.as_ref().expect("loaded recognizer"),
+                detector,
                 RunOptions {
                     wake,
                     short_wake: listen_word,
-                    cloud: streaming.unwrap_or(false),
-                    wake_path: &resources.join("wake-model"),
+                    cloud,
                 },
                 &stop_signal,
                 &action,
-                || eligible(&window, generation, &owner),
+                || eligibility.check(false),
                 &mut emit,
             )
         })();
@@ -336,15 +405,16 @@ fn new_stream(recognizer: &OnlineRecognizer) -> sherpa_onnx::OnlineStream {
     stream
 }
 
-struct RunOptions<'a> {
+struct RunOptions {
     wake: bool,
     short_wake: bool,
     cloud: bool,
-    wake_path: &'a Path,
 }
+/// `detector` is present only for wake + cloud sessions and arrives reset.
 fn run(
     recognizer: &OnlineRecognizer,
-    options: RunOptions<'_>,
+    mut detector: Option<&mut crate::voice_wake::WakeDetector>,
+    options: RunOptions,
     stop: &AtomicBool,
     action: &AtomicU8,
     eligible: impl Fn() -> bool,
@@ -354,13 +424,7 @@ fn run(
         wake,
         short_wake,
         cloud,
-        wake_path,
     } = options;
-    let mut detector = if wake && cloud {
-        Some(crate::voice_wake::WakeDetector::new(wake_path, short_wake)?)
-    } else {
-        None
-    };
     let mut stream = new_stream(recognizer);
     let (tx, rx) = mpsc::sync_channel(32);
     let failed = Arc::new(AtomicBool::new(false));

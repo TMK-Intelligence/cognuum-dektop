@@ -1,6 +1,8 @@
 //! Workspace metadata is durable; authentication is deliberately process-memory only.
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
+use std::fs;
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 use tokio::sync::{Mutex as AsyncMutex, OwnedMutexGuard};
 use url::Url;
@@ -114,6 +116,26 @@ impl SavedWorkspace {
     }
 }
 
+/// Atomically replaces `workspace.json` unless `data` matches the last bytes
+/// written. Saves run on the event loop for every focus change, so unchanged
+/// workspaces must not pay for a synchronous create/write/rename.
+/// Returns whether the file was written.
+pub fn persist_workspace(
+    dir: &Path,
+    data: Vec<u8>,
+    persisted: &mut Option<Vec<u8>>,
+) -> std::io::Result<bool> {
+    if persisted.as_deref() == Some(data.as_slice()) {
+        return Ok(false);
+    }
+    fs::create_dir_all(dir)?;
+    let temp = dir.join("workspace.json.tmp");
+    fs::write(&temp, &data)?;
+    fs::rename(temp, dir.join("workspace.json"))?;
+    *persisted = Some(data);
+    Ok(true)
+}
+
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AuthChange {
@@ -124,6 +146,9 @@ pub struct AuthChange {
 #[derive(Default)]
 pub struct AuthMemory {
     values: BTreeMap<String, String>,
+    // Derived from `values` on every write. Voice eligibility reads the owner
+    // for each audio buffer; re-parsing the session JSON there wastes CPU.
+    owner: Option<String>,
     pub revision: u64,
 }
 
@@ -138,6 +163,13 @@ impl AuthMemory {
         Ok(self.values.get(key).cloned())
     }
     pub fn owner(&self) -> Option<String> {
+        self.owner.clone()
+    }
+    /// Allocation-free comparison for hot paths.
+    pub fn is_owner(&self, owner: &str) -> bool {
+        self.owner.as_deref() == Some(owner)
+    }
+    fn parse_owner(&self) -> Option<String> {
         self.values.values().find_map(|value| {
             serde_json::from_str::<serde_json::Value>(value)
                 .ok()?
@@ -174,12 +206,13 @@ impl AuthMemory {
         if self.values.get(&key) == value.as_ref() {
             return Ok(None);
         }
-        let previous_owner = self.owner();
+        let previous_owner = self.owner.take();
         if let Some(raw) = value {
             self.values.insert(key, raw);
         } else {
             self.values.remove(&key);
         }
+        self.owner = self.parse_owner();
         self.revision += 1;
         let event = match self.owner() {
             None => "SIGNED_OUT",
@@ -207,7 +240,12 @@ pub struct WorkspaceState {
     pub window_operations: Mutex<()>,
     pub next_lease: std::sync::atomic::AtomicU64,
     pub saved: Mutex<SavedWorkspace>,
-    pub persistence_lock: Mutex<()>,
+    /// Serializes workspace.json writes and remembers the last bytes written,
+    /// so focus changes that alter nothing never touch the disk.
+    pub persisted: Mutex<Option<Vec<u8>>>,
+    /// Set by move/resize/create/destroy; window geometry is only rewritten
+    /// when something actually changed since the last successful save.
+    pub geometry_dirty: std::sync::atomic::AtomicBool,
     pub ready_owner: Mutex<Option<String>>,
     pub restoring: std::sync::atomic::AtomicBool,
     pub quitting: std::sync::atomic::AtomicBool,
@@ -223,7 +261,8 @@ impl WorkspaceState {
             window_operations: Mutex::new(()),
             next_lease: std::sync::atomic::AtomicU64::new(1),
             saved: Mutex::new(saved),
-            persistence_lock: Mutex::new(()),
+            persisted: Mutex::new(None),
+            geometry_dirty: std::sync::atomic::AtomicBool::new(true),
             ready_owner: Mutex::new(None),
             restoring: std::sync::atomic::AtomicBool::new(false),
             quitting: std::sync::atomic::AtomicBool::new(false),
@@ -355,6 +394,37 @@ mod tests {
         .is_empty());
     }
     #[test]
+    fn unchanged_workspaces_are_not_rewritten_and_failed_writes_retry() {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!(
+            "cognuum-workspace-test-{}-{nonce}",
+            std::process::id()
+        ));
+        let file = dir.join("workspace.json");
+        let mut persisted = None;
+        assert!(persist_workspace(&dir, b"one".to_vec(), &mut persisted).unwrap());
+        assert_eq!(fs::read(&file).unwrap(), b"one");
+        // An external change is not clobbered by a no-op save...
+        fs::write(&file, b"external").unwrap();
+        assert!(!persist_workspace(&dir, b"one".to_vec(), &mut persisted).unwrap());
+        assert_eq!(fs::read(&file).unwrap(), b"external");
+        // ...but any real change is written atomically.
+        assert!(persist_workspace(&dir, b"two".to_vec(), &mut persisted).unwrap());
+        assert_eq!(fs::read(&file).unwrap(), b"two");
+        assert!(!dir.join("workspace.json.tmp").exists());
+        fs::remove_dir_all(&dir).unwrap();
+        // A failed write does not record the bytes, so the next save retries.
+        fs::write(&dir, b"not a directory").unwrap();
+        assert!(persist_workspace(&dir, b"three".to_vec(), &mut persisted).is_err());
+        assert_eq!(persisted.as_deref(), Some(&b"two"[..]));
+        fs::remove_file(&dir).unwrap();
+        assert!(persist_workspace(&dir, b"three".to_vec(), &mut persisted).unwrap());
+        fs::remove_dir_all(&dir).unwrap();
+    }
+    #[test]
     fn authentication_is_memory_only_and_revisions_do_not_echo_identical_writes() {
         let mut memory = AuthMemory::default();
         let key = "sb-cognuum-desktop-auth-token".to_string();
@@ -373,11 +443,28 @@ mod tests {
             .unwrap()
             .is_none());
         assert_eq!(memory.read(&key).unwrap().as_deref(), Some(session));
+        assert_eq!(memory.owner().as_deref(), Some("member"));
+        assert!(memory.is_owner("member") && !memory.is_owner("other"));
+        let other = r#"{"access_token":"a2","refresh_token":"r2","user":{"id":"other"}}"#;
+        assert_eq!(
+            memory
+                .write(key.clone(), Some(other.into()))
+                .unwrap()
+                .unwrap()
+                .event,
+            "SIGNED_IN"
+        );
+        assert!(memory.is_owner("other") && !memory.is_owner("member"));
+        // A rejected write leaves the cached owner untouched.
+        assert!(memory.write(key.clone(), Some("{}".into())).is_err());
+        assert!(memory.is_owner("other"));
+        memory.write(key.clone(), Some(session.into())).unwrap();
         assert_eq!(
             memory.write(key.clone(), None).unwrap().unwrap().event,
             "SIGNED_OUT"
         );
         assert!(memory.read(&key).unwrap().is_none());
+        assert_eq!(memory.owner(), None);
         assert!(memory
             .write("arbitrary-file".into(), Some(session.into()))
             .is_err());
