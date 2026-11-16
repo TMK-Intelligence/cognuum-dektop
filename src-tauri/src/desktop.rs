@@ -161,23 +161,10 @@ pub fn load(app: &tauri::AppHandle, origin: &str) -> SavedWorkspace {
 
 fn write_saved(app: &tauri::AppHandle) {
     let state = app.state::<WorkspaceState>();
-    let _persistence = state
-        .persistence_lock
-        .lock()
-        .expect("workspace persistence");
+    let mut persisted = state.persisted.lock().expect("workspace persistence");
     let result = (|| -> Result<(), Box<dyn std::error::Error>> {
-        let dir = app.path().app_config_dir()?;
-        fs::create_dir_all(&dir)?;
-        let data = serde_json::to_vec(
-            &*app
-                .state::<WorkspaceState>()
-                .saved
-                .lock()
-                .expect("saved workspace"),
-        )?;
-        let temp = dir.join("workspace.json.tmp");
-        fs::write(&temp, data)?;
-        fs::rename(temp, dir.join("workspace.json"))?;
+        let data = serde_json::to_vec(&*state.saved.lock().expect("saved workspace"))?;
+        persist_workspace(&app.path().app_config_dir()?, data, &mut persisted)?;
         Ok(())
     })();
     if result.is_err() {
@@ -233,7 +220,15 @@ fn save_on_main_thread(app: &tauri::AppHandle, excluding: Option<&str>) {
         };
         write_saved(app);
     }
-    let _ = app.save_window_state(StateFlags::all() - StateFlags::VISIBLE);
+    // Geometry events are delivered on this same thread, so clearing the flag
+    // here cannot lose a concurrent move/resize. Retry next time on failure.
+    if state.geometry_dirty.swap(false, Ordering::SeqCst)
+        && app
+            .save_window_state(StateFlags::all() - StateFlags::VISIBLE)
+            .is_err()
+    {
+        state.geometry_dirty.store(true, Ordering::SeqCst);
+    }
 }
 
 pub fn restore(app: &tauri::AppHandle, saved: SavedWorkspace) -> Result<(), String> {
@@ -413,6 +408,9 @@ pub fn create(
     // The plugin's automatic restore is disabled for workspace labels. Restore
     // on the UI thread too, before showing, so cache locks never span a worker's
     // synchronous round-trip to the event loop during a multi-window open.
+    app.state::<WorkspaceState>()
+        .geometry_dirty
+        .store(true, Ordering::SeqCst);
     let shown_window = window.clone();
     app.run_on_main_thread(move || {
         let _ = shown_window.restore_state(StateFlags::all() - StateFlags::VISIBLE);
@@ -462,7 +460,13 @@ pub fn window_event(window: &tauri::Window, event: &tauri::WindowEvent) {
                 }
             }
         }
+        tauri::WindowEvent::Moved(_)
+        | tauri::WindowEvent::Resized(_)
+        | tauri::WindowEvent::ScaleFactorChanged { .. } => {
+            state.geometry_dirty.store(true, Ordering::SeqCst);
+        }
         tauri::WindowEvent::Destroyed => {
+            state.geometry_dirty.store(true, Ordering::SeqCst);
             crate::voice::stop(app, Some(window.label()));
             state.invalidate_window(window.label());
             if !state.quitting.load(Ordering::SeqCst) {

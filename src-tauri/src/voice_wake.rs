@@ -187,6 +187,38 @@ mod tests {
         assert!(misses.is_empty(), "Missed: {misses:?}");
     }
     #[test]
+    fn cached_detector_reset_between_sessions_still_wakes() {
+        // Sessions reuse one detector: a previous session may have ended
+        // mid-detection, in cooldown, or at another device sample rate.
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let mut wake = WakeDetector::new(&root.join("wake-model"), true).unwrap();
+        let wav =
+            sherpa_onnx::Wave::read(root.join("../tests/voice/hey-max-us.wav").to_str().unwrap())
+                .unwrap();
+        let rate = wav.sample_rate();
+        let detect = |wake: &mut WakeDetector| {
+            for _ in 0..10 {
+                wake.accept(rate, &vec![0.0; rate as usize / 10]);
+            }
+            wav.samples()
+                .iter()
+                .copied()
+                .chain(std::iter::repeat_n(0.0, rate as usize))
+                .collect::<Vec<_>>()
+                .chunks(512)
+                .fold(false, |found, chunk| wake.accept(rate, chunk) || found)
+        };
+        assert!(detect(&mut wake));
+        // Previous session: other device rate, cut off half-way through speech.
+        for chunk in wav.samples()[..wav.samples().len() / 2].chunks(1536) {
+            wake.accept(48_000, chunk);
+        }
+        wake.reset();
+        assert!(detect(&mut wake));
+        wake.reset();
+        assert!(detect(&mut wake));
+    }
+    #[test]
     fn silence_and_non_wake_speech_do_not_activate() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR"));
         let mut wake = WakeDetector::new(&root.join("wake-model"), true).unwrap();

@@ -100,13 +100,16 @@ pub async fn desktop_save_pdf(
     {
         return Err("Desktop request denied".into());
     }
-    let bytes = decode_pdf(&data_base64)?;
-    drop(data_base64);
-    validate_pdf(&filename, &bytes)?;
     let directory = window.path().download_dir().map_err(|_| SAVE_ERROR)?;
-    tauri::async_runtime::spawn_blocking(move || write_pdf(&directory, &filename, &bytes))
-        .await
-        .map_err(|_| SAVE_ERROR.to_string())?
+    // Decoding up to ~87 MB of base64 is CPU-bound; keep it off the async
+    // runtime workers that also serve every other window's IPC.
+    tauri::async_runtime::spawn_blocking(move || {
+        let bytes = decode_pdf(&data_base64)?;
+        drop(data_base64);
+        write_pdf(&directory, &filename, &bytes)
+    })
+    .await
+    .map_err(|_| SAVE_ERROR.to_string())?
 }
 
 #[cfg(test)]
